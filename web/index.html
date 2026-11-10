@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Play2Win</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+:root{--glass:rgba(120,130,235,.38);--glass-b:rgba(190,200,255,.55);--txt:#fff}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;background:#4a46b8;overflow:hidden}
+body{font-family:"Nunito","Segoe UI",system-ui,sans-serif;font-weight:800;color:var(--txt)}
+#app{position:relative;max-width:480px;height:100%;margin:0 auto;display:flex;flex-direction:column;
+ background:url(assets/27_menu_background_tile.webp) center/cover no-repeat;overflow:hidden}
+.scroll{flex:1;overflow-y:auto;padding:calc(env(safe-area-inset-top) + 10px) 12px 12px}
+.glass{background:var(--glass);border:2px solid var(--glass-b);border-radius:22px;
+ box-shadow:0 6px 16px rgba(20,10,80,.35),inset 0 2px 6px rgba(255,255,255,.3);backdrop-filter:blur(6px)}
+.t{text-shadow:0 2px 0 rgba(30,20,110,.7),0 0 6px rgba(30,20,110,.5)}
+/* top bar */
+.top{display:flex;align-items:center;gap:8px;padding:8px 10px}
+.avatar{position:relative;width:54px;height:54px;flex:none}
+.avatar img{position:absolute;inset:0;width:100%;height:100%}
+.avatar .face{inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);border-radius:50%}
+.uname{font-size:12px;flex:0 1 46px;min-width:30px;max-width:46px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;align-self:flex-start}
+.pill{display:flex;align-items:center;background:rgba(25,20,100,.45);border-radius:20px;height:34px;padding-left:30px;position:relative;margin-left:4px;gap:2px;flex:none}
+.pill>img.ic{position:absolute;left:-8px;top:50%;transform:translateY(-50%);width:42px}
+.pill span{font-size:15px;min-width:26px;text-align:center}
+.pill button{width:34px;height:34px;border:0;background:none;padding:0;margin-right:-4px}
+.pill button img{width:100%}
+.gear{margin-left:auto;width:34px;flex:none;border:0;background:none}
+.gear img{width:100%}
+/* ranking/history */
+.row2{display:flex;gap:10px;margin-top:12px}
+.row2 .glass{flex:1;height:62px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;font-size:21px;border:0;color:#fff;font:inherit;font-size:21px}
+.row2 img{width:54px}
+/* hero */
+.hero{position:relative;height:210px;margin-top:6px;display:flex;align-items:center;justify-content:center}
+.logo{width:62%;filter:drop-shadow(0 6px 6px rgba(20,10,80,.4))}
+.side{position:absolute;display:flex;flex-direction:column;align-items:center;font-size:13px;line-height:1.05;text-align:center;border:0;background:none;color:#fff;font-weight:800;width:62px}
+.side img{width:54px;margin-bottom:-2px}
+.side.l{left:0}.side.r{right:0}
+.dot{position:absolute;top:0;right:2px;width:14px;height:14px;border-radius:50%;background:#ff3b3b;border:2px solid #fff}
+/* banner */
+.banner{position:relative;display:block;width:100%;height:170px;border-radius:26px;padding:6px;border:0;color:#fff}
+.banner .in{position:relative;width:100%;height:100%;border-radius:20px;overflow:hidden;background:url(assets/28_fly_dodge_sky_background.webp) center 60%/cover}
+.banner .p1,.banner .p2{position:absolute;width:110px}
+.banner .p1{left:24%;top:-42px}
+.banner .p2{left:36%;bottom:-48px}
+.banner .rk{position:absolute;left:2%;top:24%;width:100px;transform:rotate(8deg)}
+.banner .ti{position:absolute;right:1%;top:14%;width:46%}
+/* games */
+.games{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+.g{position:relative;border:0;border-radius:22px;aspect-ratio:1/1.05;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;color:#fff;
+ font-size:14px;padding:0 4px 8px;box-shadow:0 6px 14px rgba(20,10,80,.4),inset 0 3px 8px rgba(255,255,255,.35);overflow:hidden}
+.g img{position:absolute;top:-6px;left:50%;transform:translateX(-50%);width:92%}
+.g span{position:relative;font-weight:900;text-shadow:0 2px 3px rgba(0,0,0,.5);line-height:1.05;text-align:center}
+.g.bomb{background:linear-gradient(#ff9a3c,#e8541a)}
+.g.cards{background:linear-gradient(#2fe4a0,#14a86a)}
+.g.slot{background:linear-gradient(#b066ff,#6a35d6)}
+/* nav */
+nav{display:flex;padding:6px 6px calc(env(safe-area-inset-bottom) + 6px);gap:4px}
+nav button{flex:1;position:relative;height:74px;border:2px solid var(--glass-b);border-radius:20px;background:var(--glass);color:#fff;
+ font:inherit;font-size:14px;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:6px;backdrop-filter:blur(6px)}
+nav button img{position:absolute;top:2px;width:46px}
+nav button.on{background:linear-gradient(#3b8bff,#2b5fe0);margin-top:-8px;height:82px}
+nav button.on img{width:56px;top:-6px}
+.press:active{transform:scale(.95)}
+/* toast / modal */
+#toast{position:fixed;left:50%;bottom:110px;transform:translate(-50%,20px);background:rgba(20,10,80,.9);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:14px;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div id="app">
+ <div class="scroll">
+  <div class="glass top">
+   <div class="avatar"><img class="face" src="assets/03_default_avatar.webp" alt=""><img src="assets/02_avatar_frame.webp" alt=""></div>
+   <div class="uname t" id="uname">Player</div>
+   <div class="pill"><img class="ic" src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span><button class="press" data-go="shop"><img src="assets/06_plus_button.webp" alt="+"></button></div>
+   <div class="pill"><img class="ic" src="assets/05_heart.webp" alt=""><span id="hearts">0</span><button class="press" data-go="hearts"><img src="assets/06_plus_button.webp" alt="+"></button></div>
+   <button class="gear press" data-go="settings"><img src="assets/07_settings.webp" alt="settings"></button>
+  </div>
+
+  <div class="row2">
+   <button class="glass press t" data-go="ranking"><img src="assets/08_ranking_trophy.webp" alt="">Ranking</button>
+   <button class="glass press t" data-go="history">History<img src="assets/09_history_scroll.webp" alt=""></button>
+  </div>
+
+  <div class="hero">
+   <button class="side l t press" style="top:6px" data-go="spin"><img src="assets/10_spin_wheel.webp" alt=""><i class="dot"></i>Spin</button>
+   <button class="side l t press" style="top:96px" data-go="tutorials"><img src="assets/12_tutorial_ticket.webp" alt="">Tutorials</button>
+   <img class="logo" src="assets/01_play2win_logo.webp" alt="Play2Win">
+   <button class="side r t press" style="top:6px" data-go="daily"><img src="assets/11_daily_bonus_chest.webp" alt="">Daily Bonus</button>
+   <button class="side r t press" style="top:96px" data-go="firstpay"><img src="assets/13_gift_box.webp" alt="">First Pay pack</button>
+  </div>
+
+  <button class="banner glass press" data-go="flydodge">
+   <div class="in">
+    <img class="p1" src="assets/16_pipe_down.webp" alt="">
+    <img class="p2" src="assets/15_pipe_up.webp" alt="">
+    <img class="rk" src="assets/14_fly_dodge_rocket.webp" alt="">
+    <img class="ti" src="assets/17_fly_dodge_title.webp" alt="Fly & Dodge">
+   </div>
+  </button>
+
+  <div class="games">
+   <button class="g bomb press" data-go="bomb"><img src="assets/18_bomb_points.webp" alt=""><span>Bomb Points</span></button>
+   <button class="g cards press" data-go="cards"><img src="assets/19_lucky_cards.webp" alt=""><span>Lucky Cards</span></button>
+   <button class="g slot press" data-go="slot"><img src="assets/20_slot_machine.webp" alt=""><span>Slot Machine</span></button>
+  </div>
+ </div>
+
+ <nav>
+  <button class="press t" data-go="games"><img src="assets/29_nav_games_controller.webp" alt="">Games</button>
+  <button class="press t" data-go="withdraw"><img src="assets/30_nav_withdraw_star.webp" alt="">Withdraw</button>
+  <button class="press t on" data-go="home"><img src="assets/31_nav_home_house.webp" alt="">Home</button>
+  <button class="press t" data-go="invites"><img src="assets/25_invites_icon.webp" alt="">Invites</button>
+  <button class="press t" data-go="profile"><img src="assets/26_profile_icon.webp" alt="">Profile</button>
+ </nav>
+</div>
+<div id="toast"></div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try{tg.setHeaderColor('#4a46b8');tg.setBackgroundColor('#4a46b8');}catch(e){} }
+
+// Backend URL: set after deploying to Render, e.g. https://play2win-server.onrender.com
+const API = window.P2W_API || "";
+
+const fmt = n => n >= 1000 ? (n/1000).toFixed(n%1000?1:0).replace(/\.0$/,'') + 'K' : String(n);
+const $ = id => document.getElementById(id);
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1500)}
+
+function render(u){ $('uname').textContent = u.name; $('coins').textContent = fmt(u.coins); $('hearts').textContent = u.hearts; }
+
+async function load(){
+  // Demo values shown until the backend is connected
+  let u = { name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && (tg.initDataUnsafe.user.first_name)) || 'Player', coins: 2500, hearts: 10 };
+  if (API && tg && tg.initData) {
+    try {
+      const r = await fetch(API + '/api/auth', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});
+      if (r.ok) u = await r.json();
+    } catch(e) {}
+  }
+  render(u);
+}
+load();
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-go]'); if(!b) return;
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  const k = b.dataset.go;
+  if (k === 'home') return;
+  toast(k + ' - coming soon');   // each screen gets built in the next steps
+});
+</script>
+</body>
+</html>
