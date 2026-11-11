@@ -147,6 +147,7 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-go]'); if(!b) return;
   if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
   if (b.dataset.go === 'home') return;
+  if (b.dataset.go === 'flydodge') { location.href = 'duel.html'; return; }
   toast(b.dataset.go + ' - coming soon');
 });
 </script>
