@@ -42,7 +42,7 @@ button:disabled{cursor:default}
 .btn.purple{background:linear-gradient(#9a78ff,#6240e6 52%,#472bbd);border-color:#d4c8ff;box-shadow:0 7px 0 #2c1a8a,inset 0 3px 5px rgba(255,255,255,.5)}
 .btn.blue{background:linear-gradient(#62a0ff,#3060ee 52%,#2244c8);border-color:#c4d6ff;box-shadow:0 7px 0 #162c8a,inset 0 3px 5px rgba(255,255,255,.5)}
 button:active:not(:disabled) .btn{transform:translateY(3px)}
-.cardBtn{width:120px;height:168px;padding:0;border-radius:14px}
+.cardBtn{width:120px;height:168px;padding:0;border-radius:14px;background:linear-gradient(#e8323b,#9e0f19);border:3px solid #ffd45a;box-shadow:0 6px 0 rgba(60,5,10,.5),inset 0 0 14px rgba(255,220,120,.35)}
 .cardBtn img.face{position:absolute;inset:0;width:100%;height:100%;border-radius:14px}
 .cardBtn.hover:not(:disabled) img.face{filter:brightness(1.12)}
 .cardBtn:active:not(:disabled) img.face{transform:scale(.95)}
@@ -225,6 +225,7 @@ function buildGame() {
       <img class="face" src="${CARD_IMG.back}" alt="">
     </button>`).join('');
   $('cards').onclick = e => { const b = e.target.closest('.cardBtn'); if (b) pick(+b.dataset.i); };
+  $('cards').querySelectorAll('img.face').forEach(useBackWithFallback);
   // legend under the table
   $('legend').innerHTML = ['skull', 'bronze', 'silver', 'gold'].map((k, i) => `
     <div class="a c" style="left:${36 + i * 164}px;top:968px;width:130px">
@@ -233,10 +234,15 @@ function buildGame() {
       <div class="${k === 'skull' ? '' : 'gold'}" style="font-size:20px;font-weight:700">${k === 'skull' ? '0%' : (LUCKY_CARDS[k] / 100) + 'x'}</div>
     </div>`).join('');
 }
+// if the red card-back image is missing on the server, use the original purple back instead
+function useBackWithFallback(img) {
+  img.addEventListener('error', () => { if (img.getAttribute('src') !== L('04_card_back')) img.src = L('04_card_back'); });
+}
 function resetBoard() {
+  clearTimers();
   for (let i = 0; i < 5; i++) {
     const c = $('c' + i); c.disabled = false; c.className = 'cardBtn press';
-    c.querySelector('img').src = CARD_IMG.back;
+    const im = c.querySelector('img'); im.onerror = null; im.src = CARD_IMG.back; useBackWithFallback(im);
   }
   $('fxLayer').innerHTML = '';
 }
@@ -252,27 +258,34 @@ function fx(i, kind) {
   im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`;
   $('fxLayer').appendChild(im); setTimeout(() => im.remove(), 900);
 }
+let timers = [];
+const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
+function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
 async function pick(i) {
   if (busy || !round) return; busy = true;
+  const rid = round.id;                       // the round this pick belongs to
   try {
     const r = await api.luckyPick({ index: i });
-    haptic(r.net > 0 ? 'success' : r.net === 0 ? 'light' : 'error');
     coins = r.coins;
+    // the player already left this round (or started a new one): the server result is kept, but nothing on screen changes
+    if (!round || round.id !== rid) { setCoins(); busy = false; return; }
+    haptic(r.net > 0 ? 'success' : r.net === 0 ? 'light' : 'error');
     // reveal the picked card first, then the others
-    const reveal = (j, delay) => setTimeout(() => {
+    const reveal = (j, delay) => later(() => {
       const c = $('c' + j), k = r.cards[j];
       c.disabled = true; c.querySelector('img').src = CARD_IMG[k];
       c.classList.add('open'); if (j !== i) c.classList.add('dim');
     }, delay);
     [i, ...[0, 1, 2, 3, 4].filter(j => j !== i)].forEach((j, n) => reveal(j, n === 0 ? 0 : 320 + n * 110));
-    setTimeout(() => {
+    later(() => {
       $('c' + i).classList.remove('dim'); if (r.net > 0) $('c' + i).classList.add('win');
       if (r.kind === 'skull') $('c' + i).classList.add('shake');
       fx(i, r.kind);
     }, 360);
     round = null; setCoins();
     const d = { kind: r.kind, prize: r.prize, net: r.net, bet: r.bet, result: r.result, coins: r.coins };
-    setTimeout(() => showResult(d), 1500);
+    later(() => showResult(d), 1500);
   } catch (e) {
     toast(errMsg(e));
     if (e.message === 'not_active') { round = null; goLobby(); }
@@ -283,7 +296,7 @@ function enterGame(r) {
   round = r; bet = r.bet; resetBoard(); show('lobby', false); show('result', false); show('histL', false); show('game', true);
   paintRound();
 }
-function goLobby() { show('game', false); show('result', false); show('histL', false); show('lobby', true); paintLobby(); refresh(false); }
+function goLobby() { clearTimers(); round = null; show('game', false); show('result', false); show('histL', false); show('lobby', true); paintLobby(); refresh(false); }
 
 /* ---------- start / result ---------- */
 async function startRound(b) {
@@ -348,7 +361,7 @@ async function refresh(resume) {   // resume=true: if a round is still open, jum
   try {
     const s = await api.luckyState(); coins = s.coins;
     paintLobby();
-    if (resume && s.round) enterGame(s.round);
+    if (resume && s.round) { enterGame(s.round); toast('You have an open round. Pick a card to finish it.'); }
   } catch (e) { toast(errMsg(e)); }
 }
 buildTiers(); buildGame(); paintLobby();
