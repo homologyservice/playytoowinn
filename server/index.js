@@ -400,13 +400,19 @@ app.post('/api/duel/claim', auth, async (req, res) => {
 // =====================================================================
 const BOMB_ENTRIES = [1000, 2000, 5000, 15000];
 const BOMB_MIN = 3, BOMB_MAX = 15, BOMB_TILES = 16;
-const BOMB_LADDER = [1.2, 1.25, 1.35, 1.4, 1.5, 1.8, 2, 2.5, 3, 3.5, 4, 4.6, 5];   // not selectable: it just rises with each safe pick
+// 13 steps, never selectable: it just rises with each safe pick (2 decimals max, so prizes are exact).
+// Checked against the real odds of the 16-tile board: for EVERY (bombs, safe picks) pair the expected return is <= ~90%
+// of the stake, so the house always keeps a margin and no bomb count can be farmed. Keep this array identical in web/common.js
+// (the page also reads it from the server, so a stale copy there can never show a wrong number).
+const BOMB_LADDER = [1.10, 1.20, 1.30, 1.42, 1.55, 1.72, 1.95, 2.25, 2.65, 3.15, 3.75, 4.40, 5.00];
 const BOMB_HISTORY_MAX = 10;
-// bombs=3 starts at 1.2x, 4 at 1.25x, 5 at 1.35x ...; every further safe pick climbs one step (capped at 5x)
+// bombs=3 starts at step 1 (1.10x), 4 bombs at step 2 (1.20x) ...; every further safe pick climbs one step (capped at the last step)
 const bombMult = (bombs, safe) => safe < 1 ? 1 : BOMB_LADDER[Math.min(BOMB_LADDER.length - 1, bombs - BOMB_MIN + safe - 1)];
-const bombPrize = (entry, mult) => Math.floor(entry * mult);
+// TOTAL paid back at cash-out = entry x multiplier (the entry is included, profit = prize - entry).
+// Integer maths on hundredths: 5000 * 1.15 must be 5750, not 5749.999...
+const bombPrize = (entry, mult) => Math.floor(entry * Math.round(mult * 100) / 100);
 
-const BombRound = mongoose.model('BombRound', new mongoose.Schema({
+const bombSchema = new mongoose.Schema({
   tgId: { type: Number, required: true },
   entry: Number, bombs: Number,
   mines: [Number],                              // secret until the round ends
@@ -414,29 +420,54 @@ const BombRound = mongoose.model('BombRound', new mongoose.Schema({
   safe: { type: Number, default: 0 },
   status: { type: String, default: 'active' },  // active | cashed | lost
   prize: { type: Number, default: 0 },
+  unpaid: { type: Boolean, default: false },    // true only between "round closed as cashed" and "coins credited" (crash safety)
   createdAt: { type: Date, default: Date.now },
   endedAt: Date,
-}));
-BombRound.collection.createIndex({ tgId: 1, status: 1, createdAt: -1 }).catch(() => {});
+});
+bombSchema.index({ tgId: 1, status: 1, createdAt: -1 });
+const BombRound = mongoose.model('BombRound', bombSchema);
 
 function bombShuffle(n, k) {   // k distinct random tiles out of n, cryptographically random
   const a = Array.from({ length: n }, (_, i) => i);
   for (let i = n - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
   return a.slice(0, k).sort((x, y) => x - y);
 }
-const bombView = (r) => ({ id: String(r._id), entry: r.entry, bombs: r.bombs, picks: r.picks, safe: r.safe,
-  mult: bombMult(r.bombs, r.safe), prize: r.safe ? bombPrize(r.entry, bombMult(r.bombs, r.safe)) : 0,
-  nextMult: bombMult(r.bombs, r.safe + 1) });
+const bombView = (r) => {
+  const prize = r.safe ? bombPrize(r.entry, bombMult(r.bombs, r.safe)) : 0;
+  return { id: String(r._id), entry: r.entry, bombs: r.bombs, picks: r.picks, safe: r.safe,
+    mult: bombMult(r.bombs, r.safe), prize, net: prize ? prize - r.entry : 0, nextMult: bombMult(r.bombs, r.safe + 1) };
+};
 async function bombTrim(uid) {   // keep only the latest BOMB_HISTORY_MAX finished rounds (oldest are deleted)
-  const old = await BombRound.find({ tgId: uid, status: { $ne: 'active' } }).sort({ endedAt: -1, createdAt: -1 }).skip(BOMB_HISTORY_MAX).limit(50);
+  const old = await BombRound.find({ tgId: uid, status: { $ne: 'active' }, unpaid: { $ne: true } }).sort({ endedAt: -1, createdAt: -1 }).skip(BOMB_HISTORY_MAX).limit(50);
   if (old.length) await BombRound.deleteMany({ _id: { $in: old.map((r) => r._id) } });
+}
+// Pay a round that was closed as "cashed". Safe to call any number of times: the coins are added exactly once.
+async function bombPay(roundId, uid, prize) {
+  const g = await BombRound.updateOne({ _id: roundId, status: 'cashed', unpaid: true }, { $set: { unpaid: false } });
+  if (!g.modifiedCount) return;                     // already paid
+  try { await User.updateOne({ tgId: uid }, { $inc: { coins: prize } }); }
+  catch (e) { await BombRound.updateOne({ _id: roundId }, { $set: { unpaid: true } }); throw e; }   // credit failed: stays payable
+}
+async function bombPayPending(uid) {                // finishes any payout that was interrupted (server restart, DB hiccup)
+  const rows = await BombRound.find({ tgId: uid, status: 'cashed', unpaid: true });
+  for (const r of rows) await bombPay(r._id, uid, r.prize);
+}
+// Close the active round as cashed and credit the coins. Returns the prize, or null if the round was not active any more.
+async function bombCashRound(r, now) {
+  const prize = bombPrize(r.entry, bombMult(r.bombs, r.safe));
+  const upd = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'cashed', endedAt: now, prize, unpaid: true } });
+  if (!upd.modifiedCount) return null;
+  await bombPay(r._id, r.tgId, prize);
+  return prize;
 }
 
 app.get('/api/bomb/state', auth, async (req, res) => {
   try {
-    const u = await upsertUser(req.tg);
+    await upsertUser(req.tg);
+    await bombPayPending(req.tg.id);
+    const u = await User.findOne({ tgId: req.tg.id });
     const r = await BombRound.findOne({ tgId: req.tg.id, status: 'active' });
-    res.json({ coins: u.coins, round: r ? bombView(r) : null });
+    res.json({ coins: u.coins, round: r ? bombView(r) : null, ladder: BOMB_LADDER, entries: BOMB_ENTRIES });
   } catch (e) { fail(res, e); }
 });
 
@@ -446,6 +477,7 @@ app.post('/api/bomb/start', auth, async (req, res) => {
     if (!BOMB_ENTRIES.includes(entry) || !Number.isInteger(bombs) || bombs < BOMB_MIN || bombs > BOMB_MAX) return res.status(400).json({ error: 'bad_request' });
     await withLock('b' + uid, async () => {
       await upsertUser(req.tg);
+      await bombPayPending(uid);
       const open = await BombRound.findOne({ tgId: uid, status: 'active' });
       if (open) return res.status(409).json({ error: 'round_active', round: bombView(open) });
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: entry } }, { $inc: { coins: -entry } }, { new: true });
@@ -481,13 +513,13 @@ app.post('/api/bomb/pick', auth, async (req, res) => {
       const upd = await BombRound.updateOne({ _id: r._id, status: 'active', safe: r.safe }, { $set: { safe }, $addToSet: { picks: tile } });
       if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
       if (safe >= BOMB_TILES - r.bombs) {   // every safe tile found: cash out automatically
-        const done = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'cashed', endedAt: now, prize } });
-        if (!done.modifiedCount) return res.status(409).json({ error: 'not_active' });
-        const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
+        const paid = await bombCashRound({ _id: r._id, tgId: uid, entry: r.entry, bombs: r.bombs, safe }, now);
+        if (paid == null) return res.status(409).json({ error: 'not_active' });
+        const u = await User.findOne({ tgId: uid });
         await bombTrim(uid);
-        return res.json({ result: 'cleared', tile, safe, mult, prize, mines: r.mines, coins: u.coins });
+        return res.json({ result: 'cleared', tile, safe, mult, prize: paid, net: paid - r.entry, entry: r.entry, mines: r.mines, coins: u.coins });
       }
-      res.json({ result: 'safe', tile, safe, mult, prize, nextMult: bombMult(r.bombs, safe + 1) });
+      res.json({ result: 'safe', tile, safe, mult, prize, net: prize - r.entry, entry: r.entry, nextMult: bombMult(r.bombs, safe + 1) });
     });
   } catch (e) { fail(res, e); }
 });
@@ -499,22 +531,22 @@ app.post('/api/bomb/cashout', auth, async (req, res) => {
       const r = await BombRound.findOne({ tgId: uid, status: 'active' });
       if (!r) return res.status(409).json({ error: 'not_active' });
       if (r.safe < 1) return res.status(400).json({ error: 'nothing_to_cash' });
-      const prize = bombPrize(r.entry, bombMult(r.bombs, r.safe));
-      const upd = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'cashed', endedAt: new Date(), prize } });
-      if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
-      const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
+      const prize = await bombCashRound({ _id: r._id, tgId: uid, entry: r.entry, bombs: r.bombs, safe: r.safe }, new Date());
+      if (prize == null) return res.status(409).json({ error: 'not_active' });
+      const u = await User.findOne({ tgId: uid });
       await bombTrim(uid);
-      res.json({ result: 'cashed', prize, safe: r.safe, mult: bombMult(r.bombs, r.safe), mines: r.mines, coins: u.coins });
+      res.json({ result: 'cashed', prize, net: prize - r.entry, entry: r.entry, safe: r.safe, mult: bombMult(r.bombs, r.safe), mines: r.mines, coins: u.coins });
     });
   } catch (e) { fail(res, e); }
 });
 
 app.get('/api/bomb/history', auth, async (req, res) => {
   try {
+    await bombPayPending(req.tg.id);
     const rows = await BombRound.find({ tgId: req.tg.id, status: { $ne: 'active' } }).sort({ endedAt: -1, createdAt: -1 }).limit(BOMB_HISTORY_MAX);
     const u = await User.findOne({ tgId: req.tg.id });
     res.json({ coins: u ? u.coins : 0, items: rows.map((r) => ({ id: String(r._id), entry: r.entry, bombs: r.bombs, safe: r.safe,
-      result: r.status === 'cashed' ? 'win' : 'loss', prize: r.prize, at: (r.endedAt || r.createdAt).getTime() })) });
+      result: r.status === 'cashed' ? 'win' : 'loss', prize: r.prize, net: r.status === 'cashed' ? r.prize - r.entry : -r.entry, at: (r.endedAt || r.createdAt).getTime() })) });
   } catch (e) { fail(res, e); }
 });
 
@@ -539,4 +571,4 @@ async function main() {
 }
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
 
-module.exports = { BombRound, bombMult, app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
+module.exports = { BombRound, BOMB_LADDER, bombPrize, bombMult, app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
