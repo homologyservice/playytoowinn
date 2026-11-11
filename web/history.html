@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Tournament History</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#4a46b8 url(assets/27_menu_background_tile.webp) center/cover no-repeat;
+ font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#stage{position:absolute;left:0;top:0;width:720px;height:1280px;transform-origin:0 0}
+.a{position:absolute}.c{text-align:center}
+img{display:block;-webkit-user-drag:none}
+#back>img{width:100%}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.t{text-shadow:0 2px 0 rgba(30,20,110,.8),0 0 6px rgba(30,20,110,.5)}
+.gold{color:#ffd63a}
+.press:active{transform:scale(.96)}
+.stretch{background-size:100% 100%;background-repeat:no-repeat}
+.tab{position:absolute;top:238px;height:76px;font-size:34px;font-weight:700;color:#fff}
+.tab.off{color:#9aa4ff}
+#list{position:absolute;left:30px;top:344px;width:660px;height:818px;overflow-y:auto;overflow-x:hidden;padding:4px 0}
+#list::-webkit-scrollbar{display:none}
+.row{position:relative;width:660px;height:108px;margin-bottom:12px;flex:none}
+.row .bg{position:absolute;inset:0;background-size:100% 100%}
+.row .av{position:absolute;left:14px;top:20px;width:68px}
+.row .nm{position:absolute;left:98px;top:20px;width:150px;font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .dt{position:absolute;left:98px;top:54px;width:150px;font-size:18px;line-height:1.15;color:#a9b3ff;font-weight:600}
+.row .sc{position:absolute;left:250px;top:14px;width:150px;text-align:center;font-size:32px;font-weight:700}
+.row .bd{position:absolute;left:290px;top:60px;width:72px;height:30px}
+.row .bdt{position:absolute;left:250px;width:150px;top:60px;text-align:center;font-size:19px;line-height:30px;font-weight:700}
+.row .pz{position:absolute;left:402px;top:10px;width:118px;text-align:center;font-size:19px;font-weight:700;color:#ffd63a}
+.row .pz img{width:60px;margin:0 auto 0}
+.row .pz.no{color:#aab0c8}
+.row .bt{position:absolute;right:10px;top:26px;width:132px;height:58px;font-size:22px;font-weight:700;text-align:center;line-height:54px}
+#empty{display:none}
+#toast{position:fixed;left:50%;bottom:14%;transform:translate(-50%,20px);background:rgba(20,10,80,.92);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+<div id="stage">
+ <button id="back" class="a press" style="left:26px;top:26px;width:92px"><img src="assets/34_back_button.webp" alt=""></button>
+ <img class="a" style="left:150px;top:30px;width:430px" src="assets/67_tournament_history_title.webp" alt="Tournament History">
+ <div class="a" style="right:26px;top:140px;width:190px;height:58px;display:none"></div>
+
+ <button class="tab stretch press t" data-f="all" style="left:30px;width:208px;background-image:url(assets/68_tab_active.webp)">ALL</button>
+ <button class="tab stretch press t off" data-f="win" style="left:256px;width:208px;background-image:url(assets/69_tab_inactive.webp)">WINS</button>
+ <button class="tab stretch press t off" data-f="loss" style="left:482px;width:208px;background-image:url(assets/69_tab_inactive.webp)">LOSSES</button>
+
+ <div class="a stretch" style="left:14px;top:330px;width:692px;height:850px;background-image:url(assets/70_list_container.webp)"></div>
+ <div id="list"></div>
+ <div id="empty" class="a c" style="left:100px;width:520px;top:520px">
+  <img style="width:260px;margin:0 auto 10px" src="assets/80_empty_state.webp" alt="">
+  <div class="t" style="font-size:34px;font-weight:700">No matches yet</div>
+  <div style="font-size:24px;opacity:.85;margin-top:6px">Play Fly & Dodge to see your history</div>
+ </div>
+ <div class="a" style="right:30px;top:1196px;width:300px;text-align:right;font-size:24px" class="t"><img class="a" style="right:150px;top:-8px;width:56px" src="assets/04_gold_coins.webp" alt=""><span id="coins" class="gold t" style="font-weight:700;font-size:32px">0</span></div>
+</div>
+<script src="common.js"></script>
+<script>
+fitStage($('stage'));
+const AV=['79_avatar_blue','79_avatar_green','79_avatar_pink','79_avatar_purple','79_avatar_red','79_avatar_yellow'];
+const hash=s=>{let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0};
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function dstr(ts){const d=new Date(ts);let h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}<br>${h}:${String(m).padStart(2,'0')} ${ap}`}
+const mmss=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+let items=[], filter='all', coins=0;
+
+$('back').onclick=()=>{ location.href=(document.referrer&&document.referrer.includes('duel'))?'duel.html'+location.search:'duel.html'+location.search; };
+if(tg&&tg.BackButton){ tg.BackButton.show(); tg.BackButton.onClick(()=>{ location.href='duel.html'+location.search; }); }
+
+document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
+  filter=b.dataset.f;
+  document.querySelectorAll('.tab').forEach(x=>{const on=x===b;x.classList.toggle('off',!on);x.style.backgroundImage=`url(assets/${on?'68_tab_active':'69_tab_inactive'}.webp)`;});
+  render();
+});
+
+function render(){
+  const list=$('list'); list.innerHTML='';
+  const f=items.filter(i=>filter==='all'||(filter==='win'&&(i.result==='win'||i.result==='draw'))||(filter==='loss'&&i.result==='loss'));
+  $('empty').style.display=f.length?'none':'block';
+  f.forEach(i=>{
+    const win=i.result==='win', loss=i.result==='loss', draw=i.result==='draw', pend=i.result==='pending';
+    const r=document.createElement('div'); r.className='row'; r.dataset.id=i.id;
+    const opp=i.opponent||'Waiting…';
+    const av=i.opponent?AV[hash(i.opponent)%AV.length]:'40_waiting_avatar_question';
+    const score=pend?`${i.myScore} - ?`:`${i.myScore} - ${i.oppScore}`;
+    const badge=pend?'':`<img class="bd" src="assets/${loss?'74_badge_loss':'73_badge_win'}.webp" alt=""><div class="bdt t">${win?'WIN':loss?'LOSS':'DRAW'}</div>`;
+    const pend2=pend?`<div class="bdt" style="color:#ffd63a">WAITING</div>`:'';
+    const prize=(win||draw)?`<div class="pz"><img src="assets/04_gold_coins.webp" alt="">${i.prize} COINS</div>`:`<div class="pz no"><img src="assets/78_silver_coins.webp" alt="">${pend?'PENDING':'NO PRIZE'}</div>`;
+    r.innerHTML=`<div class="bg" style="background-image:url(assets/${loss||pend?'72_row_card_loss':'71_row_card_win'}.webp)"></div>
+      <img class="av" src="assets/${av}.webp" alt=""><div class="nm t">${opp}</div><div class="dt">${dstr(i.at)}</div>
+      <div class="sc t">${score}</div>${badge}${pend2}${prize}<div class="bt"></div>`;
+    list.appendChild(r);
+  });
+  tick();
+}
+function tick(){
+  const now=Date.now();
+  document.querySelectorAll('.row').forEach(r=>{
+    const i=items.find(x=>x.id===r.dataset.id), bt=r.querySelector('.bt'); if(!i) return;
+    let img='', txt='', cls='', click=null;
+    if(!i.prize){ txt='-'; }
+    else if(i.claimed){ img='76_button_claimed'; txt='CLAIMED'; }
+    else if(now>=i.claimAt){ img='75_button_claim'; txt='CLAIM '+i.prize; click=()=>doClaim(i); }
+    else { img='77_button_locked_timer'; txt=mmss(i.claimAt-now); }
+    bt.style.backgroundImage=img?`url(assets/${img}.webp)`:''; bt.style.backgroundSize='100% 100%'; bt.textContent=txt;
+    bt.className='bt t'+(img==='77_button_locked_timer'?' lock':''); bt.style.paddingLeft=img==='77_button_locked_timer'?'22px':'0';
+    bt.style.cursor=click?'pointer':'default'; bt.onclick=click;
+    if(!img){bt.style.color='#aab0c8';}else bt.style.color='';
+  });
+}
+setInterval(tick,1000);
+
+let claiming=false;
+async function doClaim(i){
+  if(claiming) return; claiming=true;
+  try{ const r=await api.claim(i.id); i.claimed=true; coins=r.coins; $('coins').textContent=fmt(coins); toast('+'+i.prize+' coins added!'); haptic('success'); }
+  catch(e){ toast(e.message==='too_early'?'Not ready yet':'Could not claim'); }
+  claiming=false; tick();
+}
+(async()=>{
+  try{ const h=await api.history(); items=h.items; coins=h.coins; $('coins').textContent=fmt(coins); }catch(e){ toast('Could not load history'); }
+  render();
+})();
+</script>
+</body>
+</html>

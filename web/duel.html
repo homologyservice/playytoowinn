@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Fly & Dodge</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#4a46b8 url(assets/35_lobby_background.webp) center/cover no-repeat;
+ font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+#stage{position:absolute;left:0;top:0;width:720px;height:1280px;transform-origin:0 0}
+#cv{position:absolute;left:0;top:0;display:none;touch-action:none}
+.a{position:absolute}.c{text-align:center}
+img{display:block;-webkit-user-drag:none}
+button>img{width:100%}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.t{text-shadow:0 3px 0 rgba(30,20,110,.8),0 0 8px rgba(30,20,110,.5)}
+.gold{color:#ffd63a}
+.press:active{transform:scale(.96)}
+.layer{position:absolute;inset:0;display:none}
+.layer.on{display:block}
+.stretch{background-size:100% 100%;background-repeat:no-repeat}
+.dim{filter:grayscale(.85) brightness(.8)}
+#toast{position:fixed;left:50%;bottom:14%;transform:translate(-50%,20px);background:rgba(20,10,80,.92);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+@keyframes bob{0%,100%{transform:translateY(0) rotate(-3deg)}50%{transform:translateY(-14px) rotate(3deg)}}
+.bob{animation:bob 2.2s ease-in-out infinite}
+@keyframes pop{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+.pop{animation:pop .45s ease-out both}
+@keyframes spin{to{transform:rotate(360deg)}}
+.spinner{animation:spin 1.1s linear infinite}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
+.pulse{animation:pulse 1.2s ease-in-out infinite}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="stage">
+
+ <!-- ================= LOBBY ================= -->
+ <div id="lobby" class="layer on">
+  <button id="back" class="a press" style="left:26px;top:26px;width:92px"><img src="assets/34_back_button.webp" alt=""></button>
+  <div class="a" style="right:26px;top:34px;width:210px;height:68px">
+   <div class="a" style="inset:6px 0;border-radius:34px;background:rgba(25,20,100,.5);border:2px solid rgba(190,200,255,.45)"></div>
+   <img class="a" style="left:-8px;top:-6px;width:80px" src="assets/04_gold_coins.webp" alt="">
+   <div id="lcoins" class="a c t" style="left:68px;right:10px;top:12px;font-size:34px;line-height:44px">0</div>
+  </div>
+  <img class="a" style="left:160px;top:62px;width:400px" src="assets/32_fly_dodge_title.webp" alt="Fly & Dodge">
+  <img class="a" style="left:195px;top:282px;width:330px" src="assets/33_async_duel_ribbon.webp" alt="">
+  <img class="a bob" style="left:225px;top:352px;width:270px" src="assets/14_fly_dodge_rocket.webp" alt="">
+
+  <!-- YOU -->
+  <div class="a stretch" style="left:38px;top:562px;width:310px;height:338px;background-image:url(assets/36_panel_you_blue.webp)"></div>
+  <div class="a c t" style="left:38px;width:310px;top:586px;font-size:38px;font-weight:700">YOU</div>
+  <img class="a" style="left:132px;top:646px;width:122px;height:122px;border-radius:50%" src="assets/03_default_avatar.webp" alt="">
+  <img class="a" style="left:116px;top:630px;width:154px" src="assets/02_avatar_frame.webp" alt="">
+  <div class="a stretch c t" id="myScore" style="left:82px;top:778px;width:223px;height:72px;background-image:url(assets/42_score_box.webp);font-size:54px;line-height:72px;font-weight:700">0</div>
+
+  <!-- OPPONENT -->
+  <div class="a stretch" style="left:374px;top:562px;width:310px;height:338px;background-image:url(assets/37_panel_opponent_purple.webp)"></div>
+  <div id="oppName" class="a c t" style="left:380px;width:298px;top:590px;font-size:34px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">OPPONENT</div>
+  <div class="a" style="left:469px;top:646px;width:118px;height:118px;border-radius:50%;overflow:hidden;background:#2c1d7a">
+   <div id="strip" class="a" style="left:0;top:0;width:118px"></div>
+  </div>
+  <img class="a" style="left:446px;top:626px;width:164px" src="assets/38_opponent_avatar_frame.webp" alt="">
+  <div class="a stretch c t" id="oppScore" style="left:418px;top:778px;width:223px;height:72px;background-image:url(assets/42_score_box.webp);font-size:54px;line-height:72px;font-weight:700">0</div>
+  <div id="oppNote" class="a c" style="left:380px;width:298px;top:862px;font-size:22px;opacity:.8">From a previous run</div>
+
+  <img class="a pulse" style="left:300px;top:660px;width:120px" src="assets/41_vs_badge.webp" alt="VS">
+
+  <!-- entry fee -->
+  <div class="a" style="left:84px;top:914px;width:552px;height:70px;border-radius:35px;background:linear-gradient(#5b2fb6,#321b78);border:3px solid rgba(200,170,255,.5);box-shadow:inset 0 3px 6px rgba(255,255,255,.25)"></div>
+  <img class="a" style="left:104px;top:898px;width:92px" src="assets/04_gold_coins.webp" alt="">
+  <div class="a t" style="left:204px;top:922px;width:420px;font-size:34px;line-height:54px;font-weight:700;text-align:center">ENTRY FEE: <span class="gold">500 COINS</span></div>
+
+  <!-- play -->
+  <button id="play" class="a press" style="left:52px;top:998px;width:616px;height:118px">
+   <div class="a" style="inset:0;border-radius:42px;background:linear-gradient(#7dff6a,#1fc24a 55%,#15a03a);border:4px solid #d9ffd0;box-shadow:0 8px 0 #0e7a2c,0 12px 20px rgba(0,0,0,.35),inset 0 5px 8px rgba(255,255,255,.55)"></div>
+   <img class="a" style="left:40px;top:26px;width:66px" src="assets/45_play_icon.webp" alt="">
+   <div class="a t" style="left:110px;right:10px;top:0;line-height:112px;font-size:52px;font-weight:700;text-align:center;white-space:nowrap">PLAY <span class="gold">· 500 COINS</span></div>
+  </button>
+
+  <!-- history -->
+  <button id="hist" class="a press" style="left:166px;top:1130px;width:388px;height:72px">
+   <div class="a" style="inset:0;border-radius:36px;background:linear-gradient(#5f7bff,#3552d8);border:3px solid rgba(210,220,255,.7);box-shadow:inset 0 3px 6px rgba(255,255,255,.35),0 5px 10px rgba(0,0,0,.3)"></div>
+   <img class="a" style="left:28px;top:12px;width:48px" src="assets/46b_history_icon.webp" alt="">
+   <div class="a t" style="left:70px;right:0;top:0;line-height:70px;font-size:38px;font-weight:700;text-align:center">HISTORY</div>
+   <i id="hdot" class="a" style="display:none;right:-6px;top:-6px;width:26px;height:26px;border-radius:50%;background:#ff3b3b;border:3px solid #fff"></i>
+  </button>
+  <div class="a c" style="left:60px;right:60px;top:1216px;font-size:26px;line-height:1.2;opacity:.92">Play your run first.<br>Compare scores after.</div>
+ </div>
+
+ <!-- ================= INTRO (5s before run) ================= -->
+ <div id="intro" class="layer" style="background:rgba(14,8,70,.5)">
+  <div class="a stretch" style="left:80px;top:290px;width:560px;height:430px;background-image:url(assets/52_exit_dialog_panel.webp)"></div>
+  <div id="inTitle" class="a c t" style="left:80px;width:560px;top:404px;font-size:30px;font-weight:700">SCORE TO BEAT</div>
+  <div id="inBig" class="a c t gold" style="left:100px;width:520px;top:442px;font-size:92px;line-height:106px;font-weight:700">0</div>
+  <div id="inName" class="a c" style="left:100px;width:520px;top:552px;font-size:28px">Player</div>
+  <div id="inPrize" class="a c t" style="left:100px;width:520px;top:618px;font-size:32px;font-weight:700">WIN <span class="gold">+900 COINS</span></div>
+  <div class="a" style="left:268px;top:760px;width:184px;height:184px">
+   <img class="a" style="inset:0;width:184px" src="assets/49_countdown_circle.webp" alt="">
+   <div id="cd" class="a c t" style="left:0;right:0;top:0;line-height:184px;font-size:96px;font-weight:700">5</div>
+  </div>
+  <div id="cdTxt" class="a c t" style="left:0;right:0;top:960px;font-size:40px;font-weight:700">START IN 5s</div>
+ </div>
+
+ <!-- ================= HUD ================= -->
+ <div id="hud" class="layer" style="pointer-events:none">
+  <div class="a" style="left:40px;top:30px;width:640px;height:96px">
+   <div class="a stretch" style="inset:0;background-image:url(assets/47_game_hud_bar.webp)"></div>
+   <div id="hMe" class="a c t" style="left:14px;width:276px;top:0;line-height:90px;font-size:30px;font-weight:700;white-space:nowrap;overflow:hidden">Your Score: 0</div>
+   <div id="hOpp" class="a c t" style="left:350px;width:276px;top:0;line-height:90px;font-size:30px;font-weight:700;white-space:nowrap;overflow:hidden">—</div>
+  </div>
+  <div id="flash" class="a c t gold" style="left:0;right:0;top:250px;font-size:56px;font-weight:700;opacity:0;transition:opacity .3s">OPPONENT BEATEN!</div>
+ </div>
+ <button id="exitBtn" class="a press" style="display:none;left:30px;top:140px;width:84px;z-index:5"><img src="assets/51_exit_button.webp" alt="exit"></button>
+
+ <!-- ================= EXIT DIALOG ================= -->
+ <div id="exitDlg" class="layer" style="background:rgba(10,5,50,.6);z-index:20">
+  <div class="a stretch" style="left:70px;top:420px;width:580px;height:420px;background-image:url(assets/52_exit_dialog_panel.webp)"></div>
+  <div class="a c t" style="left:70px;width:580px;top:498px;font-size:50px;font-weight:700">EXIT?</div>
+  <div class="a c" style="left:110px;width:500px;top:576px;font-size:30px;line-height:1.25">Leave this match?<br>You will lose it and your <span class="gold">500 coins</span>.</div>
+  <button id="exitYes" class="a press stretch c t" style="left:110px;top:706px;width:230px;height:84px;background-image:url(assets/53_button_red.webp);font-size:40px;font-weight:700">YES</button>
+  <button id="exitNo" class="a press stretch c t" style="left:380px;top:706px;width:230px;height:84px;background-image:url(assets/54_button_green.webp);font-size:40px;font-weight:700">NO</button>
+ </div>
+
+ <!-- ================= RESULT ================= -->
+ <div id="result" class="layer" style="background:rgba(14,8,70,.6)">
+  <img id="rBanner" class="a" style="left:100px;top:130px;width:520px" src="" alt="">
+  <img id="rBurst" class="a" style="left:150px;top:300px;width:420px;opacity:.95" src="assets/65_reward_coin_burst.webp" alt="">
+  <div class="a stretch" style="left:60px;top:470px;width:600px;height:400px;background-image:url(assets/64_result_panel.webp)"></div>
+  <div class="a c t" style="left:80px;width:250px;top:548px;font-size:28px;font-weight:700">YOU</div>
+  <div id="rMe" class="a c t" style="left:80px;width:250px;top:586px;font-size:84px;line-height:96px;font-weight:700">0</div>
+  <img class="a" style="left:318px;top:600px;width:84px" src="assets/41_vs_badge.webp" alt="">
+  <div id="rOppN" class="a c t" style="left:390px;width:250px;top:548px;font-size:26px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</div>
+  <div id="rOpp" class="a c t" style="left:390px;width:250px;top:586px;font-size:84px;line-height:96px;font-weight:700">—</div>
+  <div id="rLine" class="a c t" style="left:90px;width:540px;top:716px;font-size:30px;line-height:1.2;font-weight:700"></div>
+  <img id="rSpin" class="a spinner" style="display:none;left:310px;top:500px;width:100px" src="assets/66_waiting_spinner.webp" alt="">
+  <button id="rLobby" class="a press stretch c t" style="left:90px;top:930px;width:250px;height:92px;background-image:url(assets/54_button_green.webp);font-size:36px;font-weight:700">LOBBY</button>
+  <button id="rHist" class="a press c t" style="left:380px;top:930px;width:250px;height:92px;font-size:36px;font-weight:700">
+   <div class="a" style="inset:0;border-radius:46px;background:linear-gradient(#5f7bff,#3552d8);border:3px solid rgba(210,220,255,.7);box-shadow:inset 0 3px 6px rgba(255,255,255,.35)"></div>
+   <span class="a" style="left:0;right:0;top:0;line-height:88px">HISTORY</span></button>
+ </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+/* ------------------------------------------------------------------ */
+/*  Assets                                                             */
+/* ------------------------------------------------------------------ */
+const IMG = {};
+['28_fly_dodge_sky_background','56_clouds','55_ground_strip','15_pipe_up','14_fly_dodge_rocket','57_rocket_crash','58_explosion_burst'].forEach(n=>{
+  const i=new Image(); i.src='assets/'+n+'.webp'; IMG[n]=i;
+});
+const AV=['79_avatar_blue','79_avatar_green','79_avatar_pink','79_avatar_purple','79_avatar_red','79_avatar_yellow'];
+const stage=$('stage'); fitStage(stage);
+const hash=s=>{let h=2166136261;for(const c of String(s)){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0};
+const avatarIdx=name=>hash(name)%AV.length;
+
+/* ------------------------------------------------------------------ */
+/*  State                                                              */
+/* ------------------------------------------------------------------ */
+let state='lobby', coins=0, session=null, busy=false, lastScore=0;
+const show=(id,on)=>$(id).classList.toggle('on',on);
+
+async function refreshCoins(){ try{ const u=await api.me(); coins=u.coins; $('lcoins').textContent=fmt(coins); $('play').classList.toggle('dim',coins<FEE);}catch(e){} }
+async function checkClaimDot(){ try{ const h=await api.history(); const now=Date.now(); $('hdot').style.display=h.items.some(i=>i.prize&&!i.claimed&&i.claimAt&&now>=i.claimAt)?'block':'none'; }catch(e){} }
+refreshCoins(); checkClaimDot();
+
+/* opponent slot-style spinner */
+const strip=$('strip');
+for(let r=0;r<10;r++) AV.forEach(a=>{const im=document.createElement('img');im.src='assets/'+a+'.webp';im.style.cssText='width:118px;height:118px;object-fit:cover;display:block';strip.appendChild(im);});
+const qImg=document.createElement('img'); qImg.src='assets/39_opponent_avatar_dim.webp'; qImg.style.cssText='position:absolute;left:0;top:0;width:118px;height:118px;object-fit:cover;display:block';
+strip.parentNode.appendChild(qImg);
+strip.style.transform='translateY(-'+(30*118)+'px)'; strip.style.display='none';
+
+function spinTo(finalIdx,ms){
+  return new Promise(res=>{
+    qImg.style.display='none'; strip.style.display='block';
+    const up=Math.random()<.5, from=30, to=up?48+finalIdx:12+finalIdx, t0=performance.now();
+    const ease=x=>1-Math.pow(1-x,3);
+    (function f(now){
+      const k=Math.min(1,(now-t0)/ms), idx=from+(to-from)*ease(k);
+      strip.style.transform=`translateY(${-idx*118}px)`;
+      if(k<1) requestAnimationFrame(f); else res();
+    })(t0);
+  });
+}
+function flicker(ms,cb){ const iv=setInterval(cb,70); return new Promise(r=>setTimeout(()=>{clearInterval(iv);r();},ms)); }
+
+/* ------------------------------------------------------------------ */
+/*  Lobby actions                                                      */
+/* ------------------------------------------------------------------ */
+$('back').onclick=()=>{ location.href='index.html'; };
+$('hist').onclick=()=>{ location.href='history.html'+location.search; };
+if(tg&&tg.BackButton){ tg.BackButton.show(); tg.BackButton.onClick(()=>{ if(state==='lobby') location.href='index.html'; else if(state==='run') openExit(); }); }
+
+$('play').onclick=async()=>{
+  if(busy) return;
+  if(coins<FEE){ toast('You need '+FEE+' coins to play'); haptic('rigid'); return; }
+  busy=true; state='spin'; haptic('medium');
+  $('oppNote').textContent='Searching opponent…';
+  const startP=api.start().catch(e=>e);
+  let spinning=true;
+  const iv0=setInterval(()=>{ if(!spinning) return; $('oppName').textContent='Player '+(1000+Math.floor(Math.random()*9000)); $('oppScore').textContent=Math.floor(Math.random()*80); },70);
+  let s=await startP; spinning=false; clearInterval(iv0);
+  if(s instanceof Error){ busy=false; state='lobby'; $('oppName').textContent='OPPONENT'; $('oppScore').textContent='0'; $('oppNote').textContent='From a previous run';
+    toast(s.message==='not_enough_coins'?'You need '+FEE+' coins to play':'Connection problem, try again'); refreshCoins(); return; }
+  session=s; coins=s.coins; $('lcoins').textContent=fmt(coins);
+  const idx=s.opponent?avatarIdx(s.opponent.name):0;
+  await Promise.all([ spinTo(idx,1700), flicker(1700,()=>{ $('oppName').textContent='Player '+(1000+Math.floor(Math.random()*9000)); $('oppScore').textContent=Math.floor(Math.random()*80); }) ]);
+  if(s.opponent){
+    $('oppName').textContent=s.opponent.name; $('oppScore').textContent=s.opponent.score; $('oppNote').textContent='From a previous run';
+  } else {
+    strip.style.display='none'; qImg.src='assets/40_waiting_avatar_question.webp'; qImg.style.display='block';
+    $('oppName').textContent='WAITING…'; $('oppScore').textContent='?'; $('oppNote').textContent='Waiting for other players';
+  }
+  haptic('heavy');
+  await new Promise(r=>setTimeout(r,900));
+  startIntro();
+};
+
+/* ------------------------------------------------------------------ */
+/*  Intro 5s                                                           */
+/* ------------------------------------------------------------------ */
+function startIntro(){
+  state='intro'; initWorld(session.seed); cv.style.display='block'; draw(performance.now());
+  show('lobby',false); show('intro',true); show('hud',true); $('exitBtn').style.display='block';
+  const o=session.opponent;
+  $('hMe').textContent='Your Score: 0'; $('hOpp').textContent=o?`${o.name}: ${o.score}`:'Waiting…';
+  if(o){ $('inTitle').textContent='SCORE TO BEAT'; $('inBig').textContent=o.score; $('inBig').style.fontSize='104px'; $('inName').textContent=o.name;
+         $('inPrize').innerHTML='WIN <span class="gold">+'+PRIZE+' COINS</span>'; }
+  else { $('inTitle').textContent='WAITING TO OTHER PLAYERS'; $('inBig').textContent='…'; $('inName').textContent='No opponent yet — set your best score!';
+         $('inPrize').innerHTML='Your score becomes the target'; }
+  let n=5; $('cd').textContent=n; $('cdTxt').textContent='START IN '+n+'s';
+  const iv=setInterval(()=>{
+    if(state!=='intro'){ clearInterval(iv); return; }
+    if($('exitDlg').classList.contains('on')) return;
+    n--; if(n<=0){ clearInterval(iv); show('intro',false); beginRun(); return; }
+    $('cd').textContent=n; $('cdTxt').textContent='START IN '+n+'s'; haptic('light');
+  },1000);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Flappy engine (fixed timestep, seeded pipes => both players get the same course) */
+/* ------------------------------------------------------------------ */
+const cv=$('cv'), cx=cv.getContext('2d');
+const H=1280, GROUND=1160, GAP=350, PW=132, SPEED=300, SPACING=450, GRAV=2700, FLAP=-840, RR=34;
+const PIPE={sx:125,sy:27,sw:263,sh:463,cap:110};
+const ROCKET={sx:10,sy:48,sw:492,sh:402};
+let W=720,S=1,DPR=1;
+function resize(){ DPR=Math.min(devicePixelRatio||1,2); const w=innerWidth,h=innerHeight; cv.width=w*DPR; cv.height=h*DPR; cv.style.width=w+'px'; cv.style.height=h+'px'; S=h/H; W=w/S; }
+resize(); addEventListener('resize',()=>{resize(); if(state!=='run') draw(performance.now());});
+
+function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let wd; // world
+function initWorld(seed){
+  wd={rnd:mulberry(hash(seed)), rx:Math.max(170,W*.3), ry:560, vy:0, pipes:[], nextX:W+160, score:0, dist:0, t:0, passedOpp:false, dead:false, deadT:0, paused:false};
+}
+function spawnPipes(){
+  while(wd.nextX<W+PW+60){
+    wd.pipes.push({x:wd.nextX, gy:270+wd.rnd()*620, passed:false});
+    wd.nextX+=SPACING;
+  }
+}
+function pipeShape(x,y,len,flip){ // rim at (x,y); body extends +len (or -len when flip)
+  const sc=PW/PIPE.sw, capH=PIPE.cap*sc, im=IMG['15_pipe_up'];
+  cx.save(); cx.translate(x,y); if(flip) cx.scale(1,-1);
+  cx.drawImage(im,PIPE.sx,PIPE.sy,PIPE.sw,PIPE.cap,0,0,PW,capH);
+  if(len>capH) cx.drawImage(im,PIPE.sx,PIPE.sy+PIPE.cap+60,PIPE.sw,110,0,capH-1,PW,len-capH+1);
+  cx.restore();
+}
+function circleRect(cx0,cy0,r,x,y,w,h){const nx=Math.max(x,Math.min(cx0,x+w)),ny=Math.max(y,Math.min(cy0,y+h));return (cx0-nx)**2+(cy0-ny)**2<r*r}
+
+function step(dt){
+  if(state==='intro'){ wd.t+=dt; wd.ry=560+Math.sin(wd.t*3)*14; wd.dist+=60*dt; return; }
+  if(state==='dead'){ wd.deadT+=dt; wd.vy=Math.min(900,wd.vy+GRAV*dt); wd.ry=Math.min(GROUND-40,wd.ry+wd.vy*dt); return; }
+  if(state!=='run'||wd.paused) return;
+  wd.t+=dt; wd.dist+=SPEED*dt;
+  wd.vy=Math.min(1100,wd.vy+GRAV*dt); wd.ry+=wd.vy*dt;
+  if(wd.ry<RR){ wd.ry=RR; wd.vy=0; }
+  spawnPipes();
+  for(const p of wd.pipes){
+    p.x-=SPEED*dt;
+    if(!p.passed&&p.x+PW<wd.rx-RR){ p.passed=true; wd.score++; onScore(); }
+    if(circleRect(wd.rx,wd.ry,RR-4,p.x,-50,PW,p.gy-GAP/2+50)||circleRect(wd.rx,wd.ry,RR-4,p.x,p.gy+GAP/2,PW,GROUND-(p.gy+GAP/2))) return crash();
+  }
+  wd.pipes=wd.pipes.filter(p=>p.x>-PW-20);
+  if(wd.ry+RR>GROUND) crash();
+}
+function onScore(){
+  $('hMe').textContent='Your Score: '+wd.score; haptic('light');
+  const o=session.opponent;
+  if(o&&!wd.passedOpp&&wd.score>o.score){ wd.passedOpp=true; const f=$('flash'); f.style.opacity=1; haptic('success'); setTimeout(()=>f.style.opacity=0,1400); }
+}
+function crash(){
+  if(state!=='run') return; state='dead'; wd.dead=true; wd.deadT=0; wd.vy=-420; haptic('error');
+  setTimeout(()=>endRun(false),1100);
+}
+
+function draw(now){
+  if(!wd) return;
+  cx.setTransform(DPR*S,0,0,DPR*S,0,0);
+  // sky
+  const sky=IMG['28_fly_dodge_sky_background']; if(sky.complete) cx.drawImage(sky,0,0,Math.max(W,720),H);
+  // clouds
+  const cl=IMG['56_clouds'];
+  if(cl.complete){ for(let i=0;i<3;i++){ const x=((i*520-wd.dist*.12)%(W+500)+W+500)%(W+500)-250; cx.globalAlpha=.9; cx.drawImage(cl,x,120+i*210,300,150);} cx.globalAlpha=1; }
+  // pipes
+  for(const p of wd.pipes){ pipeShape(p.x,p.gy-GAP/2,p.gy-GAP/2+60,true); pipeShape(p.x,p.gy+GAP/2,GROUND-(p.gy+GAP/2)+10,false); }
+  // ground
+  const g=IMG['55_ground_strip'];
+  cx.fillStyle='#7a4a22'; cx.fillRect(0,GROUND+60,W,H);
+  if(g.complete){ const tw=g.width*2.6, th=g.height*2.6, off=-(wd.dist%tw); for(let x=off;x<W;x+=tw) cx.drawImage(g,x,GROUND-8,tw,th+60); }
+  // opponent marker (only after passing there's a flash; keep canvas clean)
+  // rocket
+  if(wd.dead){
+    const k=Math.min(1,wd.deadT/.35), cr=IMG['57_rocket_crash'], ex=IMG['58_explosion_burst'];
+    if(ex.complete&&wd.deadT<.6){ const sz=260*k; cx.globalAlpha=1-wd.deadT/.7; cx.drawImage(ex,wd.rx-sz/2,wd.ry-sz/2,sz,sz); cx.globalAlpha=1; }
+    if(cr.complete) cx.drawImage(cr,wd.rx-80,wd.ry-82,160,167);
+  } else {
+    const r=IMG['14_fly_dodge_rocket']; if(r.complete){
+      cx.save(); cx.translate(wd.rx,wd.ry); cx.rotate(Math.max(-.5,Math.min(.9,wd.vy/1100))*.7);
+      cx.drawImage(r,ROCKET.sx,ROCKET.sy,ROCKET.sw,ROCKET.sh,-78,-64,156,128); cx.restore(); }
+  }
+  // big score
+  if(state==='run'||state==='dead'){
+    cx.font='700 130px Fredoka, sans-serif'; cx.textAlign='center'; cx.lineWidth=14; cx.strokeStyle='rgba(30,20,110,.85)'; cx.fillStyle='#fff';
+    const x=W/2; cx.strokeText(wd.score,x,330); cx.fillText(wd.score,x,330);
+  }
+}
+
+let last=0, acc=0;
+function loop(now){
+  if(cv.style.display!=='none'){
+    const dt=Math.min(.05,(now-last)/1000); last=now; acc+=dt;
+    while(acc>=1/120){ step(1/120); acc-=1/120; }
+    draw(now);
+  }
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(t=>{last=t;loop(t)});
+
+function beginRun(){
+  state='run'; wd.vy=FLAP; wd.t=0;
+  haptic('medium');
+}
+const tap=e=>{ if(state==='run'&&!wd.paused){ wd.vy=FLAP; } e.preventDefault(); };
+cv.addEventListener('pointerdown',tap);
+addEventListener('keydown',e=>{ if(e.code==='Space') tap(e); });
+
+/* ------------------------------------------------------------------ */
+/*  Exit                                                               */
+/* ------------------------------------------------------------------ */
+function openExit(){ if(state!=='run'&&state!=='intro') return; if(wd) wd.paused=true; show('exitDlg',true); }
+$('exitBtn').onclick=openExit;
+$('exitNo').onclick=()=>{ show('exitDlg',false); if(wd) wd.paused=false; };
+$('exitYes').onclick=async()=>{
+  show('exitDlg',false); const s=session; state='lobby';
+  try{ const r=await api.finish({matchId:s.matchId,score:0,forfeit:true}); coins=r.coins; }catch(e){}
+  toast('You left the match and lost '+FEE+' coins'); backToLobby();
+};
+
+/* ------------------------------------------------------------------ */
+/*  End of run + result                                                */
+/* ------------------------------------------------------------------ */
+async function endRun(forfeit){
+  if(state!=='dead') return;
+  const score=wd.score; state='result'; lastScore=score;
+  show('hud',false); $('exitBtn').style.display='none';
+  let r;
+  try{ r=await api.finish({matchId:session.matchId,score}); }
+  catch(e){ toast('Connection problem — retrying…'); await new Promise(x=>setTimeout(x,1500));
+            try{ r=await api.finish({matchId:session.matchId,score}); }catch(e2){ toast('Could not save the result'); backToLobby(); return; } }
+  coins=r.coins; showResult(r,score);
+}
+function showResult(r,score){
+  const ban=$('rBanner'), burst=$('rBurst'), spin=$('rSpin'), line=$('rLine');
+  show('result',true); spin.style.display='none'; burst.style.display='none';
+  $('rMe').textContent=score;
+  const o=session.opponent;
+  $('rOppN').textContent=o?o.name:'Opponent'; $('rOpp').textContent=o?o.score:'?';
+  ban.className='a pop';
+  if(r.result==='waiting'){
+    ban.style.display='none'; spin.style.display='block'; $('rOpp').textContent='?'; $('rOppN').textContent='Waiting…';
+    line.innerHTML='<span class="gold">Score saved!</span><br>Waiting for other players.<br>Check History for the result.';
+  } else {
+    ban.style.display='block';
+    ban.src='assets/'+(r.result==='win'?'61_you_win_banner':r.result==='loss'?'62_you_lose_banner':'63_draw_banner')+'.webp';
+    if(r.result==='win'){ burst.style.display='block'; burst.className='a pop'; line.innerHTML='<span class="gold">+'+r.prize+' COINS</span><br><span style="font-size:26px;font-weight:600">Claim it in History after 10 minutes</span>'; haptic('success'); }
+    else if(r.result==='draw'){ line.innerHTML='Entry fee returned<br><span class="gold">+'+r.prize+' COINS</span><br><span style="font-size:26px;font-weight:600">Claim it in History after 10 minutes</span>'; }
+    else line.innerHTML='Better luck next time!<br><span style="font-size:26px;font-weight:600">Beat their score to win.</span>';
+  }
+}
+function backToLobby(){
+  state='lobby'; busy=false; session=null;
+  cv.style.display='none'; ['intro','hud','result','exitDlg'].forEach(i=>show(i,false)); show('lobby',true); $('exitBtn').style.display='none';
+  strip.style.display='none'; qImg.src='assets/39_opponent_avatar_dim.webp'; qImg.style.display='block'; strip.style.transform='translateY(-'+(30*118)+'px)';
+  $('oppName').textContent='OPPONENT'; $('oppScore').textContent='0'; $('oppNote').textContent='From a previous run'; $('myScore').textContent=lastScore;
+  refreshCoins(); checkClaimDot();
+}
+$('rLobby').onclick=backToLobby;
+$('rHist').onclick=()=>{ location.href='history.html'+location.search; };
+</script>
+</body>
+</html>

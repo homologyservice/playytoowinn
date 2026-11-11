@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Play2Win</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#4a46b8 url(assets/27_menu_background_tile.webp) center/cover no-repeat;
+ font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;touch-action:manipulation;user-select:none}
+/* Fixed 720px-wide design canvas, scaled to fit the screen (see script) */
+#main,#nav{position:absolute;left:0;top:0;width:720px;transform-origin:0 0}
+#main{height:1136px}
+#nav{height:144px}
+.a{position:absolute}
+img{display:block;-webkit-user-drag:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+.t{text-shadow:0 3px 0 rgba(30,20,110,.75),0 0 8px rgba(30,20,110,.55)}
+.glass{background:rgba(118,128,236,.42);border:3px solid rgba(190,200,255,.55);border-radius:34px;
+ box-shadow:0 8px 18px rgba(20,10,80,.35),inset 0 3px 8px rgba(255,255,255,.28)}
+.press:active{transform:scale(.95)}
+.lbl{font-size:25px;line-height:1.05;text-align:center;font-weight:700}
+.side{width:140px;text-align:center}
+.side img{width:84px;margin:0 auto -6px}
+.dot{position:absolute;left:84px;top:2px;width:26px;height:26px;border-radius:50%;background:#ff3b3b;border:3px solid #fff}
+.pill{height:42px;border-radius:22px;background:rgba(25,20,100,.45)}
+.num{font-size:28px;font-weight:600;text-align:center}
+.plus{width:50px;height:50px}
+.g{width:206px;height:194px;border-radius:30px;overflow:hidden;box-shadow:0 8px 16px rgba(20,10,80,.4),inset 0 4px 10px rgba(255,255,255,.35)}
+.g img{position:absolute;left:3px;top:-6px;width:200px}
+.g span{position:absolute;left:0;right:0;bottom:12px;text-align:center;font-size:26px;white-space:nowrap;font-weight:700;text-shadow:0 3px 3px rgba(0,0,0,.45)}
+.bomb{background:linear-gradient(#ff9b3d,#ec5a1c)}
+.cards{background:linear-gradient(#34e6a2,#12a96a)}
+.slot{background:linear-gradient(#b36bff,#6c36d8)}
+.nb{position:absolute;top:0;height:144px;border-radius:30px 30px 0 0;background:rgba(118,128,236,.42);border:3px solid rgba(190,200,255,.5);backdrop-filter:blur(4px)}
+.nb img{position:absolute;left:50%;transform:translateX(-50%);width:92px;top:4px}
+.nb span{position:absolute;left:0;right:0;top:86px;text-align:center;font-size:26px;font-weight:700;text-shadow:0 3px 0 rgba(30,20,110,.7)}
+.nb.on{background:linear-gradient(#3b8bff,#2a5fe2);top:-4px;height:148px}
+.nb.on img{width:112px;top:-16px}
+#toast{position:fixed;left:50%;bottom:20%;transform:translate(-50%,20px);background:rgba(20,10,80,.92);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:9}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+</style>
+</head>
+<body>
+
+<div id="main">
+ <!-- top bar -->
+ <div class="a glass" style="left:14px;top:44px;width:692px;height:110px"></div>
+ <div class="a" style="left:28px;top:58px;width:80px;height:80px">
+  <img class="a" style="left:7px;top:7px;width:66px;height:66px;border-radius:50%" src="assets/03_default_avatar.webp" alt="">
+  <img class="a" style="left:0;top:0;width:80px" src="assets/02_avatar_frame.webp" alt="">
+ </div>
+ <div class="a t" id="uname" style="left:112px;top:62px;width:130px;font-size:24px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Player</div>
+
+ <div class="a pill" style="left:272px;top:82px;width:152px"></div>
+ <img class="a" style="left:230px;top:68px;width:76px" src="assets/04_gold_coins.webp" alt="">
+ <div class="a num t" id="coins" style="left:308px;top:84px;width:70px;line-height:38px">0</div>
+ <button class="a press" data-go="shop" style="left:376px;top:78px"><img class="plus" src="assets/06_plus_button.webp" alt="+"></button>
+
+ <div class="a pill" style="left:476px;top:82px;width:142px"></div>
+ <img class="a" style="left:444px;top:72px;width:64px" src="assets/05_heart.webp" alt="">
+ <div class="a num t" id="hearts" style="left:508px;top:84px;width:56px;line-height:38px">0</div>
+ <button class="a press" data-go="hearts" style="left:566px;top:78px"><img class="plus" src="assets/06_plus_button.webp" alt="+"></button>
+
+ <button class="a press" data-go="settings" style="left:640px;top:80px"><img style="width:50px" src="assets/07_settings.webp" alt="settings"></button>
+
+ <!-- ranking / history -->
+ <button class="a glass press t" data-go="ranking" style="left:28px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
+  <img class="a" style="left:14px;top:-14px;width:104px" src="assets/08_ranking_trophy.webp" alt=""><span class="a" style="left:130px;right:0;top:15px">Ranking</span></button>
+ <button class="a glass press t" data-go="history" style="left:370px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
+  <span class="a" style="left:0;width:196px;top:15px;text-align:center">History</span>
+  <img class="a" style="right:10px;top:-16px;width:106px" src="assets/09_history_scroll.webp" alt=""></button>
+
+ <!-- hero -->
+ <button class="a side press t" data-go="spin" style="left:0;top:282px"><img src="assets/10_spin_wheel.webp" alt=""><i class="dot"></i><div class="lbl">Spin</div></button>
+ <button class="a side press t" data-go="tutorials" style="left:0;top:400px"><img src="assets/12_tutorial_ticket.webp" alt=""><div class="lbl">Tutorials</div></button>
+ <img class="a" style="left:148px;top:262px;width:420px" src="assets/01_play2win_logo.webp" alt="Play2Win">
+ <button class="a side press t" data-go="daily" style="right:0;top:282px"><img src="assets/11_daily_bonus_chest.webp" alt=""><div class="lbl">Daily<br>Bonus</div></button>
+ <button class="a side press t" data-go="firstpay" style="right:0;top:402px"><img src="assets/13_gift_box.webp" alt=""><div class="lbl">First Pay<br>pack</div></button>
+
+ <!-- Fly & Dodge banner -->
+ <button class="a glass press" data-go="flydodge" style="left:40px;top:527px;width:640px;height:248px;padding:10px;border-radius:40px">
+  <div class="a" style="left:10px;top:10px;right:10px;bottom:10px;border-radius:30px;overflow:hidden;background:url(assets/28_fly_dodge_sky_background.webp) center 62%/cover">
+   <img class="a" style="left:40px;top:-125px;width:200px" src="assets/16_pipe_down.webp" alt="">
+   <img class="a" style="left:225px;top:-125px;width:210px" src="assets/16_pipe_down.webp" alt="">
+   <img class="a" style="left:40px;top:150px;width:200px" src="assets/15_pipe_up.webp" alt="">
+   <img class="a" style="left:235px;top:140px;width:210px" src="assets/15_pipe_up.webp" alt="">
+   <img class="a" style="left:30px;top:40px;width:190px;transform:rotate(6deg)" src="assets/14_fly_dodge_rocket.webp" alt="">
+   <img class="a" style="left:352px;top:-6px;width:268px" src="assets/17_fly_dodge_title.webp" alt="Fly & Dodge">
+  </div>
+ </button>
+
+ <!-- mini games -->
+ <button class="a g bomb press" data-go="bomb" style="left:44px;top:797px"><img src="assets/18_bomb_points.webp" alt=""><span>Bomb Points</span></button>
+ <button class="a g cards press" data-go="cards" style="left:257px;top:797px"><img src="assets/19_lucky_cards.webp" alt=""><span>Lucky Cards</span></button>
+ <button class="a g slot press" data-go="slot" style="left:470px;top:797px"><img src="assets/20_slot_machine.webp" alt=""><span>Slot Machine</span></button>
+</div>
+
+<div id="nav">
+ <button class="nb press" data-go="games" style="left:4px;width:142px"><img src="assets/29_nav_games_controller.webp" alt=""><span>Games</span></button>
+ <button class="nb press" data-go="withdraw" style="left:146px;width:143px"><img src="assets/30_nav_withdraw_star.webp" alt=""><span>Withdraw</span></button>
+ <button class="nb on press" data-go="home" style="left:289px;width:142px"><img src="assets/31_nav_home_house.webp" alt=""><span>Home</span></button>
+ <button class="nb press" data-go="invites" style="left:431px;width:143px"><img src="assets/25_invites_icon.webp" alt=""><span>Invites</span></button>
+ <button class="nb press" data-go="profile" style="left:574px;width:142px"><img src="assets/26_profile_icon.webp" alt=""><span>Profile</span></button>
+</div>
+<div id="toast"></div>
+
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); try{tg.setHeaderColor('#4a46b8');tg.setBackgroundColor('#4a46b8');}catch(e){} }
+const API = window.P2W_API || "";
+const $ = id => document.getElementById(id);
+const fmt = n => n >= 1000 ? (n/1000).toFixed(n%1000?1:0).replace(/\.0$/,'') + 'K' : String(n);
+
+// Scale the 720px design to fit the screen so nothing needs scrolling
+function layout(){
+  const w = window.innerWidth, h = window.innerHeight;
+  const s = Math.min(w/720, h/1280);
+  const x = (w - 720*s)/2;
+  const main = $('main'), nav = $('nav');
+  main.style.transform = `translate(${x}px,0) scale(${s})`;
+  nav.style.transform  = `translate(${x}px,${h - 144*s}px) scale(${s})`;
+}
+layout(); addEventListener('resize', layout);
+if (tg) tg.onEvent('viewportChanged', layout);
+
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1500)}
+function render(u){ $('uname').textContent = u.name; $('coins').textContent = fmt(u.coins); $('hearts').textContent = u.hearts; }
+
+async function load(){
+  let u = { name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Player', coins: 2500, hearts: 10 };
+  render(u);
+  if (API && !API.includes('YOUR-SERVER') && tg && tg.initData) {
+    try {
+      const r = await fetch(API + '/api/auth', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});
+      if (r.ok) render(await r.json());
+    } catch(e) {}
+  }
+}
+load();
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-go]'); if(!b) return;
+  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  if (b.dataset.go === 'home') return;
+  if (b.dataset.go === 'flydodge') { location.href = 'duel.html'; return; }
+  toast(b.dataset.go + ' - coming soon');
+});
+</script>
+</body>
+</html>
