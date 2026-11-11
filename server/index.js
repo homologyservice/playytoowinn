@@ -15,35 +15,49 @@ const FEE = 500;                 // entry fee (virtual coins)
 const PRIZE = 900;               // winner prize
 const CLAIM_MS = 10 * 60 * 1000; // prize can be claimed 10 min after the match is decided
 const STALE_MS = 15 * 60 * 1000; // a run that never reports back is treated as forfeited
+const SWEEP_MS = 30 * 1000;      // how often the stale-run sweep may hit the database
 const START_COINS = 2500, START_HEARTS = 2;   // new users only
+const WAIT_MAX = 5;              // max "slots" a player may have open (waiting matches + prizes not yet claimed)
+const HISTORY_MAX = 10;          // history rows kept per player; the oldest finished row is deleted when an 11th arrives
 
 // ---------- Database ----------
 const User = mongoose.model('User', new mongoose.Schema({
-  tgId: { type: Number, unique: true, index: true },
-  name: String,
-  username: String,
+  tgId: { type: Number, unique: true, required: true },     // Telegram numeric id (the real identity)
+  username: { type: String, default: '' },                   // Telegram @username without the @ (can be empty / change)
+  usernameLower: { type: String, default: '', index: true }, // for lookups
+  firstName: { type: String, default: '' },
+  lastName: { type: String, default: '' },
+  name: { type: String, default: 'Player' },                 // display name shown to opponents
+  languageCode: { type: String, default: '' },
+  isPremium: { type: Boolean, default: false },
   coins: { type: Number, default: START_COINS },
   hearts: { type: Number, default: START_HEARTS },
   createdAt: { type: Date, default: Date.now },
+  lastSeenAt: { type: Date, default: Date.now },
 }));
 
 const side = () => ({
-  user: Number, name: String, score: Number,
+  user: Number, username: String, name: String, score: Number,
   status: String,                       // playing | done | forfeit
   startedAt: Date, finishedAt: Date,
   result: String,                       // win | loss | draw
   prize: { type: Number, default: 0 },
   claimed: { type: Boolean, default: false },
   revives: { type: Number, default: 0 },   // hearts used to continue after a crash
+  gone: { type: Boolean, default: false }, // removed from this player's history (the doc is deleted when both sides are gone)
 });
-const Match = mongoose.model('Match', new mongoose.Schema({
-  status: { type: String, default: 'open', index: true },   // open | complete | dead
+const matchSchema = new mongoose.Schema({
+  status: { type: String, default: 'open' },   // open | complete
   createdAt: { type: Date, default: Date.now, index: true },
   completedAt: Date,
   claimAt: Date,
   a: side(),   // first player: plays "blind", sets the score to beat
   b: side(),   // second player: plays against a's saved score. One match = exactly two players.
-}));
+});
+matchSchema.index({ status: 1, 'b.user': 1, 'a.status': 1, createdAt: 1 });   // finding a match to join
+matchSchema.index({ 'a.user': 1, status: 1 });
+matchSchema.index({ 'b.user': 1, status: 1 });
+const Match = mongoose.model('Match', matchSchema);
 
 // ---------- Telegram initData verification ----------
 function verifyInitData(initData) {
@@ -55,28 +69,118 @@ function verifyInitData(initData) {
   const secret = crypto.createHmac('sha256', 'WebAppData').update(BOT_TOKEN).digest();
   const calc = crypto.createHmac('sha256', secret).update(check).digest('hex');
   if (calc.length !== hash.length || !crypto.timingSafeEqual(Buffer.from(calc), Buffer.from(hash))) return null;
-  if (Date.now() / 1000 - Number(params.get('auth_date')) > 86400) return null;
-  try { return JSON.parse(params.get('user')); } catch { return null; }
+  const authDate = Number(params.get('auth_date'));
+  if (!authDate || Date.now() / 1000 - authDate > 86400) return null;
+  let user = null;
+  try { user = JSON.parse(params.get('user')); } catch { return null; }
+  if (!user || !Number.isSafeInteger(Number(user.id))) return null;
+  user.id = Number(user.id);
+  return user;
 }
 function auth(req, res, next) {
   const u = verifyInitData(String(req.get('x-init-data') || ''));
   if (!u) return res.status(401).json({ error: 'unauthorized' });
   req.tg = u; next();
 }
+
+// Everything Telegram tells us about the player is stored: numeric id + @username + names.
+function identity(tgUser) {
+  const firstName = String(tgUser.first_name || '').trim().slice(0, 64);
+  const lastName = String(tgUser.last_name || '').trim().slice(0, 64);
+  const username = String(tgUser.username || '').trim().replace(/^@/, '').slice(0, 64);
+  const name = ([firstName, lastName].filter(Boolean).join(' ') || username || 'Player').slice(0, 32);
+  return { firstName, lastName, username, usernameLower: username.toLowerCase(), name,
+           languageCode: String(tgUser.language_code || '').slice(0, 10), isPremium: !!tgUser.is_premium };
+}
 async function upsertUser(tgUser) {
-  return User.findOneAndUpdate(
-    { tgId: tgUser.id },
-    { $set: { name: tgUser.first_name || 'Player', username: tgUser.username || '' }, $setOnInsert: { tgId: tgUser.id } },
-    { upsert: true, new: true }
-  );
+  const q = { tgId: tgUser.id };
+  const upd = { $set: { ...identity(tgUser), lastSeenAt: new Date() } };
+  const opt = { upsert: true, new: true, setDefaultsOnInsert: true };
+  try { return await User.findOneAndUpdate(q, upd, opt); }
+  catch (e) {
+    if (e && e.code === 11000) return User.findOneAndUpdate(q, upd, opt);   // two first requests raced: the user now exists
+    throw e;
+  }
 }
 
 // ---------- Bot ----------
 const bot = new Telegraf(BOT_TOKEN);
-bot.start((ctx) =>
-  ctx.reply('ကြိုဆိုပါတယ်', Markup.inlineKeyboard([Markup.button.webApp('ဂိမ်းထဲဝင်ရန်', WEBAPP_URL)]))
-);
+bot.catch((err) => console.error('bot error', err));
+bot.start((ctx) => {
+  if (ctx.from && !ctx.from.is_bot) upsertUser(ctx.from).catch((e) => console.error('upsert on /start failed', e));
+  return ctx.reply('ကြိုဆိုပါတယ်', Markup.inlineKeyboard([Markup.button.webApp('ဂိမ်းထဲဝင်ရန်', WEBAPP_URL)]));
+});
 const notify = (tgId, text) => bot.telegram.sendMessage(tgId, text).catch(() => {});
+
+// ---------- Small helpers ----------
+// Runs fn one at a time per key (one Render instance => an in-process lock is enough).
+const locks = new Map();
+async function withLock(key, fn) {
+  const prev = locks.get(key) || Promise.resolve();
+  let release;
+  const mine = new Promise((r) => { release = r; });
+  const tail = prev.then(() => mine);
+  locks.set(key, tail);
+  await prev;
+  try { return await fn(); }
+  finally { release(); if (locks.get(key) === tail) locks.delete(key); }
+}
+
+// Slots: a player may hold at most WAIT_MAX of these at once:
+//   - a match that is still WAITING for an opponent
+//   - a match that finished as a win/draw but whose prize has NOT been claimed yet
+// A loss frees its slot immediately. A win frees it only after the prize is claimed.
+async function slotInfo(uid) {
+  const [waiting, unclaimed] = await Promise.all([
+    Match.countDocuments({ status: 'open', 'a.user': uid, 'a.status': 'done', 'a.gone': { $ne: true } }),
+    Match.countDocuments({ status: 'complete', 'a.user': uid, 'a.prize': { $gt: 0 }, 'a.claimed': { $ne: true }, 'a.gone': { $ne: true } }),
+  ]);
+  const used = waiting + unclaimed, blocked = used >= WAIT_MAX;
+  return { waiting, unclaimed, used, limit: WAIT_MAX, blocked,
+           reason: blocked ? (waiting >= WAIT_MAX ? 'waiting_limit' : 'claim_first') : null };
+}
+
+// ---------- History pruning (keeps the database small) ----------
+// A player keeps only their latest HISTORY_MAX rows. When an 11th row appears, the OLDEST finished row is removed.
+// Rows still waiting for an opponent are never removed (they would lose the player's entry fee).
+// If the removed row still had an unclaimed prize, it is paid out automatically, so nobody loses coins.
+async function removeSide(m, s) {
+  const o = s === 'a' ? 'b' : 'a';
+  const prize = m[s].prize || 0;
+  if (prize > 0 && !m[s].claimed) {
+    const g = await Match.updateOne({ _id: m._id, [`${s}.claimed`]: { $ne: true } }, { $set: { [`${s}.claimed`]: true } });
+    if (g.modifiedCount) await User.updateOne({ tgId: m[s].user }, { $inc: { coins: prize } });
+  }
+  if (!m[o].user || m[o].gone) await Match.deleteOne({ _id: m._id });                       // nobody else needs it
+  else await Match.updateOne({ _id: m._id }, { $set: { [`${s}.gone`]: true } });            // the other player still sees it
+}
+async function pruneHistory(uid) {
+  return withLock('h' + uid, async () => {
+    const ms = await Match.find({
+      status: { $in: ['open', 'complete'] },
+      $or: [{ 'a.user': uid, 'a.gone': { $ne: true } }, { 'b.user': uid, 'b.gone': { $ne: true } }],
+    });
+    const rows = [];
+    for (const m of ms) {
+      const s = m.a.user === uid ? 'a' : 'b';
+      if (m.status === 'open') {
+        if (s === 'a' && m.a.status === 'done') rows.push({ m, s, at: m.a.finishedAt.getTime(), keep: true });   // waiting row
+        continue;                                                                                                 // runs in progress are not history yet
+      }
+      rows.push({ m, s, at: m.completedAt.getTime(), keep: false });
+    }
+    let excess = rows.length - HISTORY_MAX;
+    if (excess <= 0) return;
+    rows.sort((x, y) => x.at - y.at);                  // oldest first
+    for (const r of rows) {
+      if (excess <= 0) break;
+      if (r.keep) continue;
+      await removeSide(r.m, r.s);
+      excess--;
+    }
+  });
+}
+const safePrune = (uid) => (uid ? pruneHistory(uid).catch((e) => console.error('prune failed', e)) : Promise.resolve());
 
 // ---------- Duel logic ----------
 function decide(aScore, bScore, bForfeit) {
@@ -104,73 +208,88 @@ async function completeMatch(m, bScore, bForfeit) {
               : r.a === 'draw' ? `Fly & Dodge: it's a draw (${upd.a.score} - ${bScore}). Your entry fee comes back, claim it in History after 10 minutes.`
               : `Fly & Dodge: you lost ${upd.a.score} - ${bScore}.`;
     notify(upd.a.user, msg);
+    await Promise.all([safePrune(upd.a.user), safePrune(upd.b.user)]);   // both players just got a new history row
   }
   return upd;
 }
 
 // Runs that were started but never reported (app closed) count as forfeits.
-async function sweep() {
-  const lim = new Date(Date.now() - STALE_MS);
-  await Match.updateMany({ status: 'open', 'a.status': 'playing', 'a.startedAt': { $lt: lim } },
-                         { $set: { status: 'dead', 'a.status': 'forfeit', 'a.score': 0 } });
+let lastSweep = 0;
+async function sweep(force) {
+  const now = Date.now();
+  if (!force && now - lastSweep < SWEEP_MS) return;
+  lastSweep = now;
+  const lim = new Date(now - STALE_MS);
+  // an "a" run that never came back has no opponent and no history row: just delete it
+  await Match.deleteMany({ status: 'open', 'a.status': 'playing', 'a.startedAt': { $lt: lim } });
+  await Match.deleteMany({ status: 'dead' });                                       // rows left by older versions
+  await Match.deleteMany({ status: 'complete', 'a.gone': true, 'b.gone': true });   // gone for both players
   const stale = await Match.find({ status: 'open', 'a.status': 'done', 'b.status': 'playing', 'b.startedAt': { $lt: lim } });
   for (const m of stale) await completeMatch(m, 0, true);
 }
 // Starting a new run while an old one is still "playing" = the old one was abandoned -> forfeit it.
 async function forfeitActive(uid) {
-  const asA = await Match.findOneAndUpdate({ status: 'open', 'a.user': uid, 'a.status': 'playing' },
-                                           { $set: { status: 'dead', 'a.status': 'forfeit', 'a.score': 0 } });
-  if (asA) return;
-  const asB = await Match.findOne({ status: 'open', 'b.user': uid, 'b.status': 'playing' });
-  if (asB) await completeMatch(asB, 0, true);
+  await Match.deleteMany({ status: 'open', 'a.user': uid, 'a.status': 'playing' });
+  const asB = await Match.find({ status: 'open', 'b.user': uid, 'b.status': 'playing' });
+  for (const m of asB) await completeMatch(m, 0, true);
 }
 
 // ---------- API ----------
 const app = express();
 app.use(cors({ origin: WEBAPP_URL.replace(/\/$/, ''), allowedHeaders: ['Content-Type', 'x-init-data'] }));
-app.use(express.json());
+app.use(express.json({ limit: '10kb' }));
 app.get('/', (_, res) => res.send('Play2Win server OK'));
 
+const fail = (res, e) => { console.error(e); if (!res.headersSent) res.status(500).json({ error: 'server_error' }); };
+
 app.post('/api/auth', async (req, res) => {
-  const tgUser = verifyInitData(String(req.body.initData || ''));
-  if (!tgUser) return res.status(401).json({ error: 'invalid initData' });
-  const u = await upsertUser(tgUser);
-  res.json({ name: u.name, coins: u.coins, hearts: u.hearts });
+  try {
+    const tgUser = verifyInitData(String((req.body && req.body.initData) || ''));
+    if (!tgUser) return res.status(401).json({ error: 'invalid initData' });
+    const u = await upsertUser(tgUser);
+    const slots = await slotInfo(tgUser.id);
+    res.json({ name: u.name, username: u.username, coins: u.coins, hearts: u.hearts, ...slots });
+  } catch (e) { fail(res, e); }
 });
 
-// Start a run: charge the entry fee, then join someone's saved score or open a new match.
+// Start a run: check the slot limit, charge the entry fee, then join someone's saved score or open a new match.
 app.post('/api/duel/start', auth, async (req, res) => {
   try {
     const uid = req.tg.id;
-    const user = await upsertUser(req.tg);
-    await sweep();
-    await forfeitActive(uid);
+    await withLock('u' + uid, async () => {
+      const user = await upsertUser(req.tg);
+      await sweep();
+      await forfeitActive(uid);
 
-    const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: FEE } }, { $inc: { coins: -FEE } }, { new: true });
-    if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      const slots = await slotInfo(uid);
+      if (slots.blocked) return res.status(403).json({ error: slots.reason, ...slots });
 
-    try {
-      const now = new Date();
-      // a match is used once: it needs a finished "a", an empty "b", and "a" must be someone else
-      const joined = await Match.findOneAndUpdate(
-        { status: 'open', 'b.user': null, 'a.status': 'done', 'a.user': { $ne: uid } },
-        { $set: { 'b.user': uid, 'b.name': user.name, 'b.status': 'playing', 'b.startedAt': now, 'b.claimed': false } },
-        { sort: { createdAt: 1 }, new: true }
-      );
-      if (joined) {
-        return res.json({ matchId: String(joined._id), seed: String(joined._id), role: 'b',
-                          opponent: { name: joined.a.name, score: joined.a.score }, coins: paid.coins, hearts: paid.hearts });
+      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: FEE } }, { $inc: { coins: -FEE } }, { new: true });
+      if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+
+      try {
+        const now = new Date();
+        // a match is used once: it needs a finished "a", an empty "b", and "a" must be someone else
+        const joined = await Match.findOneAndUpdate(
+          { status: 'open', 'b.user': null, 'a.status': 'done', 'a.user': { $ne: uid } },
+          { $set: { 'b.user': uid, 'b.username': user.username, 'b.name': user.name, 'b.status': 'playing', 'b.startedAt': now, 'b.claimed': false } },
+          { sort: { createdAt: 1 }, new: true }
+        );
+        if (joined) {
+          return res.json({ matchId: String(joined._id), seed: String(joined._id), role: 'b',
+                            opponent: { name: joined.a.name, score: joined.a.score }, coins: paid.coins, hearts: paid.hearts });
+        }
+        const m = await Match.create({ a: { user: uid, username: user.username, name: user.name, status: 'playing', startedAt: now } });
+        res.json({ matchId: String(m._id), seed: String(m._id), role: 'a', opponent: null, coins: paid.coins, hearts: paid.hearts });
+      } catch (e) {
+        await User.updateOne({ tgId: uid }, { $inc: { coins: FEE } });   // refund if matching failed
+        throw e;
       }
-      const m = await Match.create({ a: { user: uid, name: user.name, status: 'playing', startedAt: now } });
-      res.json({ matchId: String(m._id), seed: String(m._id), role: 'a', opponent: null, coins: paid.coins, hearts: paid.hearts });
-    } catch (e) {
-      await User.updateOne({ tgId: uid }, { $inc: { coins: FEE } });   // refund if matching failed
-      throw e;
-    }
-  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+    });
+  } catch (e) { fail(res, e); }
 });
 
-// Spend 1 heart to continue a run after crashing (score is kept, the client restarts from the next gap).
+// Spend 1 heart to continue a run after crashing (score is kept, the client continues from where it crashed).
 app.post('/api/duel/revive', auth, async (req, res) => {
   try {
     const uid = req.tg.id;
@@ -182,7 +301,7 @@ app.post('/api/duel/revive', auth, async (req, res) => {
     if (!u) return res.status(402).json({ error: 'no_hearts' });
     await Match.updateOne({ _id: m._id }, { $inc: { [`${role}.revives`]: 1 } });
     res.json({ hearts: u.hearts });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+  } catch (e) { fail(res, e); }
 });
 
 // Report the score of a run (or a forfeit).
@@ -200,31 +319,41 @@ app.post('/api/duel/finish', auth, async (req, res) => {
     // basic anti-cheat: you cannot pass more pipes than the elapsed time allows (5s countdown + at least ~0.65s per pipe at top speed)
     const elapsed = Date.now() - m[role].startedAt.getTime();
     if (!forfeit && !(score >= 0 && score <= Math.floor(Math.max(0, elapsed - 5000) / 650) + 1)) forfeit = true;
-    if (forfeit) score = 0;
+    if (forfeit || !Number.isFinite(score)) { score = 0; }
 
     if (role === 'a') {
+      if (forfeit) {   // nobody joined this run yet, so there is nothing to keep
+        const del = await Match.deleteOne({ _id: m._id, status: 'open', 'a.status': 'playing' });
+        if (!del.deletedCount) return res.status(409).json({ error: 'not_active' });
+        const [u, slots] = await Promise.all([User.findOne({ tgId: uid }), slotInfo(uid)]);
+        return res.json({ result: 'forfeit', myScore: 0, coins: u.coins, ...slots });
+      }
       const upd = await Match.findOneAndUpdate({ _id: m._id, 'a.status': 'playing' },
-        { $set: { 'a.score': score, 'a.status': forfeit ? 'forfeit' : 'done', 'a.finishedAt': new Date(), ...(forfeit ? { status: 'dead' } : {}) } });
+        { $set: { 'a.score': score, 'a.status': 'done', 'a.finishedAt': new Date() } });
       if (!upd) return res.status(409).json({ error: 'not_active' });
-      const u = await User.findOne({ tgId: uid });
-      return res.json({ result: forfeit ? 'forfeit' : 'waiting', myScore: score, coins: u.coins });
+      await safePrune(uid);                                  // keep only the latest 10 rows
+      const [u, slots] = await Promise.all([User.findOne({ tgId: uid }), slotInfo(uid)]);
+      return res.json({ result: 'waiting', myScore: score, coins: u.coins, ...slots });
     }
     const done = await completeMatch(m, score, forfeit);
     if (!done) return res.status(409).json({ error: 'not_active' });
-    const u = await User.findOne({ tgId: uid });
+    const [u, slots] = await Promise.all([User.findOne({ tgId: uid }), slotInfo(uid)]);
     res.json({ result: forfeit ? 'forfeit' : done.b.result, myScore: score, oppScore: done.a.score,
-               prize: done.b.prize, claimAt: done.claimAt.getTime(), coins: u.coins });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+               prize: done.b.prize, claimAt: done.claimAt.getTime(), coins: u.coins, ...slots });
+  } catch (e) { fail(res, e); }
 });
 
-// History list
+// History list: at most HISTORY_MAX rows, newest first. Every waiting match is listed as "pending".
 app.get('/api/duel/history', auth, async (req, res) => {
   try {
     const uid = req.tg.id;
     await sweep();
     const u = await upsertUser(req.tg);
-    const ms = await Match.find({ $or: [{ 'a.user': uid }, { 'b.user': uid }], status: { $in: ['open', 'complete'] } })
-                          .sort({ createdAt: -1 }).limit(60);
+    await safePrune(uid);
+    const ms = await Match.find({
+      status: { $in: ['open', 'complete'] },
+      $or: [{ 'a.user': uid, 'a.gone': { $ne: true } }, { 'b.user': uid, 'b.gone': { $ne: true } }],
+    });
     const items = [];
     for (const m of ms) {
       const mine = m.a.user === uid ? 'a' : 'b', other = mine === 'a' ? 'b' : 'a';
@@ -238,11 +367,13 @@ app.get('/api/duel/history', auth, async (req, res) => {
                      at: m.completedAt.getTime() });
       }
     }
-    res.json({ items, coins: u.coins });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+    items.sort((x, y) => y.at - x.at);
+    const slots = await slotInfo(uid);
+    res.json({ items: items.slice(0, HISTORY_MAX), coins: u.coins, hearts: u.hearts, ...slots });
+  } catch (e) { fail(res, e); }
 });
 
-// Claim a prize (only after the 10-minute timer, only once)
+// Claim a prize (only after the 10-minute timer, only once). Claiming a win frees its slot.
 app.post('/api/duel/claim', auth, async (req, res) => {
   try {
     const uid = req.tg.id;
@@ -251,17 +382,27 @@ app.post('/api/duel/claim', auth, async (req, res) => {
     if (!m || m.status !== 'complete') return res.status(404).json({ error: 'not_found' });
     const mine = m.a.user === uid ? 'a' : m.b.user === uid ? 'b' : null;
     if (!mine) return res.status(403).json({ error: 'forbidden' });
+    if (m[mine].gone) return res.status(404).json({ error: 'not_found' });
     const prize = m[mine].prize;
     if (!prize) return res.status(400).json({ error: 'nothing' });
     if (Date.now() < m.claimAt.getTime()) return res.status(425).json({ error: 'too_early' });
     const upd = await Match.updateOne({ _id: m._id, [`${mine}.claimed`]: { $ne: true } }, { $set: { [`${mine}.claimed`]: true } });
     if (!upd.modifiedCount) return res.status(409).json({ error: 'already_claimed' });
     const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
-    res.json({ coins: u.coins });
-  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+    const slots = await slotInfo(uid);
+    res.json({ coins: u.coins, ...slots });
+  } catch (e) { fail(res, e); }
 });
 
-(async () => {
+// Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
+app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
+  if (res.headersSent) return;
+  res.status(err && err.status === 400 ? 400 : 500).json({ error: err && err.status === 400 ? 'bad_request' : 'server_error' });
+});
+
+process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
+
+async function main() {
   await mongoose.connect(MONGODB_URI);
   if (RENDER_EXTERNAL_URL) {
     const path = '/tg/' + crypto.createHash('sha256').update(BOT_TOKEN).digest('hex').slice(0, 24);
@@ -271,4 +412,7 @@ app.post('/api/duel/claim', auth, async (req, res) => {
     bot.launch();
   }
   app.listen(PORT, () => console.log('Server on', PORT));
-})();
+}
+if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
+
+module.exports = { app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
