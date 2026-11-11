@@ -47,6 +47,12 @@ const BOMB_LADDER = [1.10, 1.20, 1.30, 1.42, 1.55, 1.72, 1.95, 2.25, 2.65, 3.15,
 const bombMult = (bombs, safe) => safe < 1 ? 1 : BOMB_LADDER[Math.min(BOMB_LADDER.length - 1, bombs - 3 + safe - 1)];
 const bombPrize = (entry, mult) => Math.floor(entry * Math.round(mult * 100) / 100);   // total returned (entry included); exact, no float error
 
+/* Lucky Cards rules (same as server/index.js; the server is the source of truth) */
+const LUCKY_TIERS = [200, 500, 1000, 3000, 5000];
+const LUCKY_CARDS = { skull: 0, bronze: 50, silver: 100, gold: 300 };   // percent of the bet that comes back
+const LUCKY_DECK = ['skull', 'skull', 'bronze', 'silver', 'gold'];
+const luckyPrize = (bet, kind) => Math.floor(bet * LUCKY_CARDS[kind] / 100);
+
 /* Demo mode: everything runs in this browser (localStorage). Used before the server is connected.
    It follows the same rules as the server: max 5 open slots, max 10 history rows. */
 const WAIT_MAX = 5, HISTORY_MAX = 10;
@@ -59,6 +65,8 @@ const Mock = (() => {
   const rid = () => Math.random().toString(36).slice(2, 10);
   const oppName = () => 'Player ' + (1000 + Math.floor(Math.random() * 9000));
   const bomb = () => (s.bomb = s.bomb || { round: null, hist: [] });
+  const lk = () => (s.lucky = s.lucky || { round: null, hist: [] });
+  const lview = r => ({ id: r.id, bet: r.bet, count: LUCKY_DECK.length, picked: -1, status: 'active', cards: null, prize: 0, net: 0 });
   const bview = r => ({ id: r.id, entry: r.entry, bombs: r.bombs, picks: r.picks, safe: r.safe,
     mult: bombMult(r.bombs, r.safe), prize: r.safe ? bombPrize(r.entry, bombMult(r.bombs, r.safe)) : 0, net: r.safe ? bombPrize(r.entry, bombMult(r.bombs, r.safe)) - r.entry : 0, nextMult: bombMult(r.bombs, r.safe + 1) });
   function bend(b, r, result, prize) { // finish a round and keep only the latest 10 (oldest deleted)
@@ -166,6 +174,27 @@ const Mock = (() => {
       if (Date.now() < m.claimAt) throw new Error('too_early');
       m.claimed = true; s.coins += m.prize; save(s); return { coins: s.coins, ...slots() };
     },
+    /* ---- Lucky Cards (demo): same rules as the server ---- */
+    async luckyState() { const l = lk(); return { coins: s.coins, round: l.round ? lview(l.round) : null, tiers: LUCKY_TIERS, cards: LUCKY_CARDS }; },
+    async luckyPlay({ bet }) {
+      const l = lk();
+      if (!LUCKY_TIERS.includes(bet)) throw new Error('bad_request');
+      if (l.round) throw new Error('round_active');
+      if (s.coins < bet) throw new Error('not_enough_coins');
+      s.coins -= bet;
+      l.round = { id: rid(), bet, deck: LUCKY_DECK.slice().sort(() => Math.random() - .5) }; save(s);
+      return { coins: s.coins, round: lview(l.round) };
+    },
+    async luckyPick({ index }) {
+      const l = lk(), r = l.round; if (!r) throw new Error('not_active');
+      if (!(index >= 0 && index < r.deck.length)) throw new Error('bad_request');
+      const kind = r.deck[index], prize = luckyPrize(r.bet, kind), net = prize - r.bet;
+      s.coins += prize; l.round = null;
+      l.hist.unshift({ id: r.id, bet: r.bet, kind, prize, net, at: Date.now() }); l.hist = l.hist.slice(0, 10);
+      save(s);
+      return { result: net > 0 ? 'win' : net === 0 ? 'even' : 'lose', kind, picked: index, cards: r.deck, prize, net, bet: r.bet, coins: s.coins };
+    },
+    async luckyHistory() { return { coins: s.coins, items: lk().hist.slice(0, 10) }; },
   };
 })();
 
@@ -181,6 +210,10 @@ const api = LIVE ? {
   bombPick: b => call('/api/bomb/pick', b),
   bombCashout: () => call('/api/bomb/cashout', {}),
   bombHistory: () => call('/api/bomb/history'),
+  luckyState: () => call('/api/lucky/state'),
+  luckyPlay: b => call('/api/lucky/play', b),
+  luckyPick: b => call('/api/lucky/pick', b),
+  luckyHistory: () => call('/api/lucky/history'),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */

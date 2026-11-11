@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Lucky Cards</title>
+<link rel="preload" as="image" href="assets/lucky_01_bg.webp">
+<link rel="preload" as="image" href="assets/lucky_02_title.webp">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#070d3a url(assets/lucky_01_bg.webp) center/cover no-repeat;
+ font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+#stage{position:absolute;left:0;top:0;width:720px;height:1400px;transform-origin:0 0}
+.night{position:absolute;inset:0;pointer-events:none;background:linear-gradient(rgba(4,8,44,.62),rgba(4,8,44,.4) 45%,rgba(4,8,44,.7));
+ background-image:radial-gradient(2px 2px at 60px 90px,#fff9,transparent),radial-gradient(1.5px 1.5px at 210px 330px,#fffc,transparent),radial-gradient(2px 2px at 560px 200px,#fff8,transparent),radial-gradient(1.5px 1.5px at 650px 430px,#fffa,transparent),radial-gradient(2px 2px at 120px 760px,#fff8,transparent),radial-gradient(1.5px 1.5px at 600px 980px,#fffb,transparent),radial-gradient(2px 2px at 330px 1190px,#fff9,transparent),radial-gradient(1.5px 1.5px at 40px 1290px,#fffa,transparent)}
+.a{position:absolute}.c{text-align:center}
+img{display:block;-webkit-user-drag:none;pointer-events:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:absolute}
+button>img{width:100%}
+button:disabled{cursor:default}
+.press:active:not(:disabled){transform:scale(.96)}
+.layer{position:absolute;inset:0;display:none}.layer.on{display:block}
+.gold{color:#ffd63a}.cyan{color:#58e1ff}
+.t{text-shadow:0 3px 0 rgba(8,20,110,.85),0 0 8px rgba(8,20,110,.5)}
+.fit{display:flex;align-items:center;justify-content:center;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);background:rgba(10,20,90,.94);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.glass{position:absolute;border-radius:36px;border:3px solid rgba(165,205,255,.78);background:linear-gradient(rgba(45,105,235,.36),rgba(20,60,195,.30));box-shadow:inset 0 0 24px rgba(130,185,255,.32),0 0 18px rgba(80,140,255,.3);pointer-events:none}
+.glass.night{border-radius:34px;border-color:rgba(190,175,255,.7);background:linear-gradient(rgba(40,30,130,.55),rgba(14,10,80,.6));box-shadow:inset 0 0 24px rgba(150,130,255,.28),0 0 22px rgba(120,100,255,.3)}
+.glass.pill{border-radius:40px;border-width:2.5px;background:rgba(10,35,150,.62);box-shadow:inset 0 0 14px rgba(130,185,255,.25),0 0 12px rgba(80,140,255,.25)}
+.glass.stat{border-radius:24px;border-width:2.5px;background:linear-gradient(rgba(14,40,160,.78),rgba(8,26,130,.78));box-shadow:inset 0 0 12px rgba(120,170,255,.25)}
+.glass.row{border-radius:26px;border-width:2.5px;background:linear-gradient(rgba(30,40,150,.62),rgba(16,22,110,.62));border-color:rgba(170,160,255,.55);box-shadow:inset 0 0 12px rgba(120,130,255,.2)}
+.lrow.sel .glass.row{background:linear-gradient(rgba(255,226,122,.35),rgba(255,160,40,.3));border-color:#fff0b0;box-shadow:inset 0 0 14px rgba(255,220,120,.4),0 0 18px rgba(255,190,50,.55)}
+.chipTxt{font-size:30px;letter-spacing:.5px}
+.chip{border-radius:24px;border:2.5px solid rgba(175,170,255,.65);background:linear-gradient(rgba(85,70,205,.6),rgba(60,48,175,.55))}
+.lrow.sel .chip{background:linear-gradient(#ffe27a,#ffb02a 55%,#f58a12);border-color:#fff0b0;color:#5a2b00;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.btn{position:absolute;left:0;right:0;top:0;bottom:7px;border-radius:30px;border:3px solid;pointer-events:none}
+.btn.green{background:linear-gradient(#6af596,#22d45c 52%,#13ad47);border-color:#c4ffd8;box-shadow:0 7px 0 #0b7a31,inset 0 3px 5px rgba(255,255,255,.6)}
+.btn.purple{background:linear-gradient(#9a78ff,#6240e6 52%,#472bbd);border-color:#d4c8ff;box-shadow:0 7px 0 #2c1a8a,inset 0 3px 5px rgba(255,255,255,.5)}
+.btn.blue{background:linear-gradient(#62a0ff,#3060ee 52%,#2244c8);border-color:#c4d6ff;box-shadow:0 7px 0 #162c8a,inset 0 3px 5px rgba(255,255,255,.5)}
+button:active:not(:disabled) .btn{transform:translateY(3px)}
+.cardBtn{width:120px;height:168px;padding:0;border-radius:14px}
+.cardBtn img.face{position:absolute;inset:0;width:100%;height:100%;border-radius:14px}
+.cardBtn.hover:not(:disabled) img.face{filter:brightness(1.12)}
+.cardBtn:active:not(:disabled) img.face{transform:scale(.95)}
+.cardBtn.open{animation:flip .5s ease-out both}
+.cardBtn.shake{animation:shake .5s both}
+.cardBtn.dim{filter:grayscale(.6) brightness(.7);opacity:.85}
+.cardBtn.win{box-shadow:0 0 0 4px #ffe27a,0 0 26px rgba(255,220,100,.9)}
+.glowIn{animation:glowIn .5s ease-out both}
+@keyframes flip{0%{transform:scale(.7) rotateY(80deg)}60%{transform:scale(1.1)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+@keyframes pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+@keyframes glowIn{from{opacity:0}to{opacity:1}}
+@keyframes fxout{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.5);opacity:0}}
+.pop{animation:pop .45s ease-out both}
+.fx{position:absolute;pointer-events:none;animation:fxout .8s ease-out both}
+.badge{padding:4px 14px;border-radius:14px;font-size:20px;font-weight:700}
+.badge.w{background:#25c85a}.badge.l{background:#d8384f}.badge.e{background:#5c6fd8}
+.row2{position:absolute;left:62px;width:596px;height:66px;border-radius:20px;background:rgba(10,30,130,.55);border:2px solid rgba(170,200,255,.35);display:flex;align-items:center;padding:0 22px;gap:14px;font-size:24px}
+</style>
+</head>
+<body>
+<div id="stage">
+<div class="night"></div>
+
+ <!-- ================= LOBBY ================= -->
+ <div id="lobby" class="layer on">
+  <button id="back" class="press" style="left:29px;top:37px;width:88px"><img src="assets/bomb_04_btn_back_square.webp" alt=""></button>
+  <div class="a" style="left:235px;top:46px;width:253px;height:68px">
+   <div class="glass pill" style="inset:0;border-radius:34px"></div><img class="a" src="assets/bomb_10_coin_icon_small.webp" style="left:12px;top:11px;width:46px" alt="">
+   <div class="a fit" id="lCoins" style="left:62px;right:14px;top:0;bottom:0;font-size:24px;font-weight:700"></div>
+  </div>
+
+  <img class="a" src="assets/lucky_02_title.webp" style="left:110px;top:118px;width:500px" alt="">
+  <img class="a" src="assets/lucky_03_card_fan.webp" style="left:150px;top:252px;width:420px" alt="">
+
+  <!-- tier frame: one bet per row -->
+  <div class="glass night" style="left:29px;top:512px;width:662px;height:612px"></div>
+  <div class="a c cyan t" style="left:0;right:0;top:536px;font-size:28px;font-weight:700;letter-spacing:1px">CHOOSE YOUR BET</div>
+  <div class="a c" style="left:0;right:0;top:578px;font-size:18px;opacity:.9">Card returns (coins)</div>
+  <div id="tiers"></div>
+
+  <div class="a c" style="left:0;right:0;top:1140px;font-size:21px;line-height:1.35;opacity:.95">Pick 1 of 5 face-down cards. A <span class="gold">skull</span> means your bet is lost.</div>
+
+  <button id="hist" class="press" style="left:29px;top:1206px;width:271px;height:87px">
+   <div class="btn purple"></div>
+   <div class="a fit" style="inset:0 0 7px 0;font-size:30px;font-weight:700;gap:10px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>HISTORY</div>
+  </button>
+  <button id="play" class="press" style="left:317px;top:1206px;width:373px;height:87px">
+   <div class="btn green"></div>
+   <div class="a fit t" id="playTxt" style="inset:0 0 7px 0;font-size:34px;font-weight:700;gap:12px"><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY</div>
+  </button>
+  <div class="a c" style="left:30px;right:30px;top:1310px;font-size:18px;line-height:1.3;opacity:.9">Card returns are set when you press PLAY.<br>Expected return is 90% of the bet.</div>
+ </div>
+
+ <!-- ================= GAME ================= -->
+ <div id="game" class="layer">
+  <button id="gBack" class="press" style="left:29px;top:37px;width:88px"><img src="assets/bomb_04_btn_back_square.webp" alt=""></button>
+  <div class="a" style="left:203px;top:46px;width:253px;height:68px">
+   <div class="glass pill" style="inset:0;border-radius:34px"></div><img class="a" src="assets/bomb_10_coin_icon_small.webp" style="left:12px;top:11px;width:46px" alt="">
+   <div class="a fit" id="gCoins" style="left:62px;right:14px;top:0;bottom:0;font-size:24px;font-weight:700"></div>
+  </div>
+  <div class="a" style="left:541px;top:58px;width:148px;height:48px">
+   <div class="glass pill" style="inset:0;border-radius:24px"></div>
+   <div class="a fit" id="gBet" style="inset:0;font-size:18px;font-weight:700"></div>
+  </div>
+
+  <img class="a" src="assets/lucky_02_title.webp" style="left:160px;top:118px;width:400px" alt="">
+  <div class="a c cyan t" style="left:0;right:0;top:262px;font-size:28px;font-weight:700;letter-spacing:1px">PICK ONE CARD</div>
+
+  <div class="glass night" style="left:29px;top:316px;width:662px;height:560px"></div>
+  <div id="cards"></div>
+  <div class="a c gold" id="gMsg" style="left:60px;right:60px;top:740px;font-size:24px;line-height:1.3;min-height:70px"></div>
+
+  <!-- cards: reference legend -->
+  <div class="glass night" style="left:29px;top:912px;width:662px;height:220px"></div>
+  <div class="a c" style="left:0;right:0;top:926px;font-size:20px;font-weight:700;opacity:.9">CARD RETURNS</div>
+  <div id="legend"></div>
+  <div class="a c" style="left:0;right:0;top:1160px;font-size:21px;line-height:1.35;opacity:.95">The cards are already set. Your choice only decides which one you see.<br><span class="gold">Skull = bet lost.</span></div>
+  <div class="a" id="fxLayer" style="left:0;top:0;width:720px;height:1400px;pointer-events:none"></div>
+ </div>
+
+ <!-- ================= RESULT ================= -->
+ <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
+  <img id="rFrame" class="a pop" style="left:0;top:344px;width:706px" alt="">
+  <div class="a c" id="rKicker" style="left:0;right:0;top:604px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
+  <img id="rTitle" class="a pop" style="left:230px;top:626px;width:260px" alt="">
+  <div class="a c" id="rSub" style="left:90px;right:90px;top:712px;font-size:21px;line-height:1.25"></div>
+  <div id="rBanner" class="a fit" style="left:110px;top:786px;width:500px;height:66px;border-radius:20px;font-size:36px;font-weight:700"></div>
+  <button id="rAgain" class="press" style="left:126px;top:872px;width:236px;height:80px">
+   <div class="btn green"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:26px;font-weight:700;gap:8px"><svg width="18" height="20" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY AGAIN</div>
+  </button>
+  <button id="rLobby" class="press" style="left:382px;top:872px;width:236px;height:80px">
+   <div class="btn blue"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:28px;font-weight:700;gap:10px"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg>LOBBY</div>
+  </button>
+ </div>
+
+ <!-- ================= HISTORY ================= -->
+ <div id="histL" class="layer" style="background:rgba(5,15,80,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">
+  <div class="glass night" style="left:29px;top:150px;width:662px;height:1000px"></div>
+  <div class="a c gold t" style="left:0;right:0;top:196px;font-size:46px;font-weight:700">LUCKY HISTORY</div>
+  <div class="a c" id="hSub" style="left:0;right:0;top:256px;font-size:20px;opacity:.85">Latest 10 rounds</div>
+  <div id="hRows"></div>
+  <button id="hClose" class="press" style="left:210px;top:1040px;width:300px;height:84px">
+   <div class="btn blue"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:28px;font-weight:700">CLOSE</div>
+  </button>
+ </div>
+</div>
+<div id="toast"></div>
+
+<script src="common.js"></script>
+<script>
+/* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
+const SW = 720, SH = 1400; let SC = 1;
+const stage = $('stage');
+function fit() {
+  const w = innerWidth, h = innerHeight; SC = Math.min(w / SW, h / SH);
+  stage.style.transform = `translate(${(w - SW * SC) / 2}px,${(h - SH * SC) / 2}px) scale(${SC})`;
+}
+fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
+
+const B = n => 'assets/bomb_' + n + '.webp';          // shared art from Bomb Points
+const L = n => 'assets/lucky_' + n + '.webp';          // Lucky Cards art
+const CARD_IMG = { back: L('04_card_back'), skull: L('05_card_skull'), bronze: L('06_card_star_bronze'), silver: L('07_card_star_silver'), gold: L('08_card_star_gold') };
+const CARD_NAME = { skull: 'Skull', bronze: 'Bronze star', silver: 'Silver star', gold: 'Gold star' };
+/* warm the cache so popups and cards show instantly */
+[CARD_IMG.back, CARD_IMG.skull, CARD_IMG.bronze, CARD_IMG.silver, CARD_IMG.gold, L('10_fx_win_burst'), L('11_fx_skull_smoke'),
+ B('31_popup_win_frame'), B('32_popup_lose_frame'), B('37_title_you_win'), B('38_title_you_lose'), B('29_fx_coin_burst')]
+ .forEach(src => { const im = new Image(); im.src = src; if (im.decode) im.decode().catch(() => {}); });
+
+const show = (id, on) => $(id).classList.toggle('on', on);
+const num = n => Number(n).toLocaleString('en-US');
+const ERR = { not_enough_coins: 'Not enough coins', round_active: 'Finish your current round first', not_active: 'This round is already over',
+  bad_request: 'Invalid choice', network_error: 'Connection problem, try again', server_error: 'Server problem, try again', unauthorized: 'Please reopen from the bot button' };
+const errMsg = e => ERR[e && e.message] || 'Something went wrong';
+
+let coins = 0, bet = 200, round = null, busy = false, lastBet = 200;
+
+/* ---------- lobby ---------- */
+function setCoins() { $('lCoins').textContent = num(coins) + ' COINS'; $('gCoins').textContent = num(coins) + ' COINS'; }
+function buildTiers() {
+  $('tiers').innerHTML = LUCKY_TIERS.map((v, i) => {
+    const top = 614 + i * 96;
+    const slots = ['bronze', 'silver', 'gold'].map((k, j) => `
+      <div class="a c" style="left:${196 + j * 140}px;top:8px;width:120px;height:76px">
+        <img class="a" src="${CARD_IMG[k]}" style="left:40px;top:0;width:40px;height:56px;border-radius:5px" alt="">
+        <div class="a c t" style="left:0;right:0;top:56px;font-size:17px;font-weight:700;line-height:20px">${num(luckyPrize(v, k))}</div>
+      </div>`).join('');
+    return `
+    <button class="lrow press" data-v="${v}" style="left:29px;top:${top}px;width:662px;height:92px">
+      <div class="glass row" style="inset:0"></div>
+      <div class="a fit chip" style="left:16px;top:18px;width:150px;height:56px;gap:6px"><span class="chipTxt">${num(v)}</span><img src="${B('10_coin_icon_small')}" style="width:28px" alt=""></div>
+      ${slots}
+    </button>`;
+  }).join('');
+  $('tiers').onclick = e => { const b = e.target.closest('.lrow'); if (!b) return; bet = +b.dataset.v; haptic('light'); paintLobby(); };
+}
+function paintLobby() {
+  document.querySelectorAll('.lrow').forEach(b => b.classList.toggle('sel', +b.dataset.v === bet));
+  $('playTxt').innerHTML = `<svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY ${num(bet)}`;
+  $('play').style.opacity = coins < bet ? .6 : 1;
+  setCoins();
+}
+$('back').onclick = () => { location.href = 'index.html' + location.search; };
+$('gBack').onclick = () => goLobby();
+
+/* ---------- game ---------- */
+function buildGame() {
+  // 5 cards in one row, face down
+  const xs = [36, 164, 292, 420, 548];
+  $('cards').innerHTML = xs.map((x, i) => `
+    <button class="cardBtn press" id="c${i}" data-i="${i}" style="left:${x}px;top:372px">
+      <img class="face" src="${CARD_IMG.back}" alt="">
+    </button>`).join('');
+  $('cards').onclick = e => { const b = e.target.closest('.cardBtn'); if (b) pick(+b.dataset.i); };
+  // legend under the table
+  $('legend').innerHTML = ['skull', 'bronze', 'silver', 'gold'].map((k, i) => `
+    <div class="a c" style="left:${36 + i * 164}px;top:968px;width:130px">
+      <img src="${CARD_IMG[k]}" style="width:64px;margin:0 auto 6px;border-radius:7px" alt="">
+      <div style="font-size:18px;font-weight:700">${CARD_NAME[k]}</div>
+      <div class="${k === 'skull' ? '' : 'gold'}" style="font-size:20px;font-weight:700">${k === 'skull' ? '0%' : (LUCKY_CARDS[k] / 100) + 'x'}</div>
+    </div>`).join('');
+}
+function resetBoard() {
+  for (let i = 0; i < 5; i++) {
+    const c = $('c' + i); c.disabled = false; c.className = 'cardBtn press';
+    c.querySelector('img').src = CARD_IMG.back;
+  }
+  $('fxLayer').innerHTML = '';
+}
+function paintRound(msg) {
+  $('gBet').textContent = 'BET ' + num(round ? round.bet : bet);
+  $('gMsg').innerHTML = msg || 'Tap one card to reveal it. Good luck!';
+  setCoins();
+}
+function fx(i, kind) {
+  const c = $('c' + i), x = parseFloat(c.style.left) + 60, y = parseFloat(c.style.top) + 84, s = kind === 'skull' ? 300 : 260;
+  const im = document.createElement('img'); im.className = 'fx';
+  im.src = kind === 'skull' ? L('11_fx_skull_smoke') : L('10_fx_win_burst');
+  im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`;
+  $('fxLayer').appendChild(im); setTimeout(() => im.remove(), 900);
+}
+async function pick(i) {
+  if (busy || !round) return; busy = true;
+  try {
+    const r = await api.luckyPick({ index: i });
+    haptic(r.net > 0 ? 'success' : r.net === 0 ? 'light' : 'error');
+    coins = r.coins;
+    // reveal the picked card first, then the others
+    const reveal = (j, delay) => setTimeout(() => {
+      const c = $('c' + j), k = r.cards[j];
+      c.disabled = true; c.querySelector('img').src = CARD_IMG[k];
+      c.classList.add('open'); if (j !== i) c.classList.add('dim');
+    }, delay);
+    [i, ...[0, 1, 2, 3, 4].filter(j => j !== i)].forEach((j, n) => reveal(j, n === 0 ? 0 : 320 + n * 110));
+    setTimeout(() => {
+      $('c' + i).classList.remove('dim'); if (r.net > 0) $('c' + i).classList.add('win');
+      if (r.kind === 'skull') $('c' + i).classList.add('shake');
+      fx(i, r.kind);
+    }, 360);
+    round = null; setCoins();
+    const d = { kind: r.kind, prize: r.prize, net: r.net, bet: r.bet, result: r.result, coins: r.coins };
+    setTimeout(() => showResult(d), 1500);
+  } catch (e) {
+    toast(errMsg(e));
+    if (e.message === 'not_active') { round = null; goLobby(); }
+  }
+  busy = false;
+}
+function enterGame(r) {
+  round = r; bet = r.bet; resetBoard(); show('lobby', false); show('result', false); show('histL', false); show('game', true);
+  paintRound();
+}
+function goLobby() { show('game', false); show('result', false); show('histL', false); show('lobby', true); paintLobby(); refresh(false); }
+
+/* ---------- start / result ---------- */
+async function startRound(b) {
+  if (busy) return; busy = true;
+  try {
+    const r = await api.luckyPlay({ bet: b }); coins = r.coins; lastBet = b; haptic('medium'); enterGame(r.round);
+  } catch (e) {
+    if (e.message === 'round_active') { toast(ERR.round_active); await refresh(true); }
+    else toast(errMsg(e));
+  }
+  busy = false;
+}
+$('play').onclick = () => startRound(bet);
+
+function showResult(d) {
+  const net = d.net, win = net >= 0;                       // a 1x card (even) shows the win frame, with +0
+  $('rFrame').src = B(win ? '31_popup_win_frame' : '32_popup_lose_frame');
+  $('rTitle').src = B(net > 0 ? '37_title_you_win' : '38_title_you_lose'); $('rTitle').style.display = net === 0 ? 'none' : 'block';
+  const bn = $('rBanner');
+  bn.style.background = net > 0 ? 'linear-gradient(#ffe27a,#ffb42c 60%,#f08d14)' : net === 0 ? 'linear-gradient(#9db4ff,#5c7bdc)' : 'linear-gradient(rgba(150,130,190,.75),rgba(95,80,140,.8))';
+  bn.style.border = net > 0 ? '3px solid #fff0b0' : '2.5px solid rgba(215,200,245,.8)';
+  bn.style.boxShadow = net > 0 ? 'inset 0 3px 6px rgba(255,255,255,.55),0 0 18px rgba(255,190,50,.5)' : 'inset 0 2px 6px rgba(255,255,255,.25)';
+  const fr = $('rFrame'); fr.style.width = win ? '706px' : '736px'; fr.style.left = win ? '0px' : '4px'; fr.style.top = win ? '344px' : '350px';
+  $('rKicker').textContent = 'BALANCE ' + num(coins);
+  if (d.kind === 'skull') $('rSub').textContent = 'Skull! Your ' + num(d.bet) + ' bet is lost.';
+  else if (net > 0) $('rSub').textContent = CARD_NAME[d.kind] + '! ' + num(d.prize) + ' back, profit +' + num(net);
+  else if (net === 0) $('rSub').textContent = CARD_NAME[d.kind] + ': bet returned.';
+  else $('rSub').textContent = CARD_NAME[d.kind] + ': ' + num(d.prize) + ' back, ' + num(-net) + ' lost.';
+  bn.textContent = net > 0 ? '+' + num(net) + ' COINS' : net === 0 ? 'EVEN' : '-' + num(-net) + ' COINS';
+  bn.style.color = net > 0 ? '#5a2f00' : '#f6e8ff'; bn.style.textShadow = net > 0 ? '0 2px 0 rgba(255,255,255,.55)' : '0 2px 0 rgba(30,10,70,.8)';
+  ['rFrame', 'rTitle'].forEach(id => { const el = $(id); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
+  show('result', true); haptic(net > 0 ? 'success' : 'error');
+}
+$('rAgain').onclick = () => { show('result', false); startRound(lastBet); };
+$('rLobby').onclick = () => goLobby();
+
+/* ---------- history ---------- */
+$('hist').onclick = async () => {
+  show('histL', true); $('hRows').innerHTML = ''; $('hSub').textContent = 'Loading…';
+  try {
+    const h = await api.luckyHistory();
+    $('hSub').textContent = h.items.length ? 'Latest 10 rounds' : 'No rounds yet. Go play!';
+    $('hRows').innerHTML = h.items.slice(0, 10).map((r, i) => `
+      <div class="row2" style="top:${296 + i * 74}px;height:66px">
+        <span class="badge ${r.net > 0 ? 'w' : r.net === 0 ? 'e' : 'l'}">${r.net > 0 ? 'WIN' : r.net === 0 ? 'EVEN' : 'LOSE'}</span>
+        <span style="flex:1;font-size:21px;line-height:1.15">Bet <b class="gold" style="font-size:22px">${num(r.bet)}</b><br><span style="opacity:.8;font-size:18px">${CARD_NAME[r.kind]}</span></span>
+        <b style="color:${r.net > 0 ? '#7dff9c' : r.net === 0 ? '#c9d4ff' : '#ff9fb0'}">${r.net > 0 ? '+' + num(r.net) : r.net === 0 ? '0' : '-' + num(-r.net)}</b>
+      </div>`).join('');
+  } catch (e) { $('hSub').textContent = errMsg(e); }
+};
+$('hClose').onclick = () => show('histL', false);
+
+/* ---------- boot ---------- */
+async function refresh(resume) {   // resume=true: if a round is still open, jump back into it
+  try {
+    const s = await api.luckyState(); coins = s.coins;
+    paintLobby();
+    if (resume && s.round) enterGame(s.round);
+  } catch (e) { toast(errMsg(e)); }
+}
+buildTiers(); buildGame(); paintLobby();
+refresh(true);
+</script>
+</body>
+</html>
