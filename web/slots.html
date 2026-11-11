@@ -29,23 +29,24 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 .chip{border-radius:18px;border:2.5px solid rgba(175,170,255,.65);background:linear-gradient(rgba(85,70,205,.6),rgba(60,48,175,.55));font-size:20px;font-weight:700}
 .chip.on{background:linear-gradient(#ffe27a,#ffb02a 55%,#f58a12);border-color:#fff0b0;color:#5a2b00;text-shadow:0 1px 0 rgba(255,255,255,.5)}
 /* reels */
-#reelView{position:absolute;overflow:hidden;border-radius:6px}
+#reelView{position:absolute;overflow:hidden;background:linear-gradient(#0a1655,#13257f 50%,#0a1655)}
+#reelView::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:3;box-shadow:inset 0 14px 18px -6px rgba(3,8,40,.75),inset 0 -14px 18px -6px rgba(3,8,40,.75),inset 12px 0 14px -8px rgba(3,8,40,.6),inset -12px 0 14px -8px rgba(3,8,40,.6)}
 .col{position:absolute;top:0;bottom:0;overflow:hidden}
 .strip{position:absolute;left:0;right:0;top:0;will-change:transform}
-.cell{height:76px;display:flex;align-items:center;justify-content:center}
-.cell img{width:68px;height:68px;transition:filter .2s,transform .2s}
+.cell{height:79px;display:flex;align-items:center;justify-content:center}
+.cell img{width:66px;height:66px;transition:filter .2s,transform .2s}
 .cell.hit img{transform:scale(1.12);filter:drop-shadow(0 0 10px #ffd63a) drop-shadow(0 0 4px #fff)}
 .cell.dim img{filter:grayscale(.45) brightness(.7)}
 .strip.spin{animation:spinY .42s linear infinite}
 .strip.blur{filter:blur(1.4px)}
-@keyframes spinY{from{transform:translateY(0)}to{transform:translateY(-760px)}}
+@keyframes spinY{from{transform:translateY(0)}to{transform:translateY(-790px)}}
 .winline{position:absolute;pointer-events:none;opacity:0;transition:opacity .2s}
 .winline.on{opacity:1}
 .fx{position:absolute;pointer-events:none;opacity:0}
 .fx.on{animation:fxpop .9s ease-out both}
 @keyframes fxpop{0%{transform:scale(.3);opacity:1}100%{transform:scale(1.25);opacity:0}}
 /* message + modal */
-#msg{position:absolute;left:30px;right:30px;top:1338px;text-align:center;font-size:24px;font-weight:700;line-height:1.25;min-height:32px}
+#msg{position:absolute;left:30px;right:30px;top:1348px;text-align:center;font-size:24px;font-weight:700;line-height:1.25;min-height:32px}
 #toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);background:rgba(10,20,90,.94);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99;max-width:86vw;text-align:center}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 #modal{position:absolute;inset:0;background:rgba(5,15,80,.72);display:none;z-index:50}
@@ -72,13 +73,12 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 
  <img class="a" src="assets/slot_02_logo.webp" style="left:160px;top:112px;width:400px" alt="">
 
- <!-- machine -->
+ <!-- reels: placed BEHIND the machine, exactly under its transparent window (stage x152-549, y547-785) -->
+ <div id="reelView" style="left:152px;top:547px;width:397px;height:238px"></div>
+ <!-- machine: its own gold frame covers the reel edges, so symbols look like they are inside -->
  <img class="a" src="assets/slot_03_machine.webp" style="left:20px;top:236px;width:680px" alt="">
- <!-- reel frame sits on the machine window (opening scaled to fit) -->
- <img class="a" src="assets/slot_04_reel_frame.webp" style="left:105px;top:507px;width:491px" alt="">
- <div id="reelView" style="left:150px;top:532px;width:398px;height:228px;background:rgba(4,12,60,.82)"></div>
- <img id="winline" class="winline a" src="assets/slot_10_winline.webp" style="left:147px;top:637px;width:406px;height:19px;filter:drop-shadow(0 0 6px #ffd63a) drop-shadow(0 0 2px #fff)" alt="">
- <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:199px;top:496px;width:300px;height:300px" alt="">
+ <div id="winline" class="winline a" style="left:160px;top:662px;width:380px;height:7px;border-radius:4px;z-index:2;background:linear-gradient(90deg,rgba(255,214,58,0),#ffd63a 12%,#fff6c2 50%,#ffd63a 88%,rgba(255,214,58,0));box-shadow:0 0 10px 2px rgba(255,214,58,.9),0 0 22px 4px rgba(255,190,40,.55)"></div>
+ <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:200px;top:516px;width:300px;height:300px" alt="">
 
  <!-- bet -->
  <button id="minus" class="a press" style="left:44px;top:1104px;width:68px;height:68px"><img src="assets/slot_08_btn_minus.webp" style="width:100%" alt=""></button>
@@ -93,7 +93,10 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 
  <!-- spin row -->
  <button id="auto" class="a press" style="left:40px;top:1244px;width:170px;height:84px"><div class="btn blue"></div><div class="a fit t" id="autoTxt" style="inset:0 0 7px 0;font-size:24px;font-weight:700">AUTO</div></button>
- <button id="spin" class="a press" style="left:250px;top:1236px;width:220px;height:92px"><img id="spinImg" src="assets/slot_05_spin_green.webp" style="width:100%" alt=""><div class="a fit t" style="left:36%;right:4%;top:0;bottom:0;font-size:30px;font-weight:700;padding-top:4px">SPIN</div></button>
+ <button id="spin" class="a press" style="left:235px;top:1237px;width:250px;height:98px">
+  <img id="spinImg" class="a" src="assets/slot_05_spin_green.webp" style="left:-76.7px;top:-34px;width:405px;height:auto;max-width:none" alt="">
+  <div class="a fit t" id="spinTxt" style="left:70px;right:12px;top:0;bottom:6px;font-size:36px;font-weight:700;letter-spacing:1px">SPIN</div>
+ </button>
  <button id="paytableBtn" class="a press" style="left:510px;top:1244px;width:170px;height:84px"><div class="btn purple"></div><div class="a fit t" style="inset:0 0 7px 0;font-size:24px;font-weight:700">PAYTABLE</div></button>
 
  <div id="msg" class="a t"></div>
@@ -133,15 +136,15 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 /* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
 const SW = 720, SH = 1400; let SC = 1;
 const stage = $('stage');
-function fit() { const w = innerWidth, h = innerHeight; SC = Math.min(w / SW, h / SH); stage.style.transform = `translate(${(w - SW * SC) / 2}px,${(h - SH * SC) / 2}px) scale(${SC})`; }
-fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
+function fit() { const w = document.documentElement.clientWidth || innerWidth, h = innerHeight; SC = Math.min(w / SW, h / SH); stage.style.transform = `translate(${(w - SW * SC) / 2}px,${(h - SH * SC) / 2}px) scale(${SC})`; }
+fit(); addEventListener('resize', fit); addEventListener('orientationchange', fit); addEventListener('load', fit); if (window.visualViewport) visualViewport.addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
 
 const SYM_IMG = { seven: 'assets/slot_s1_seven.webp', bar: 'assets/slot_s2_bar.webp', cherry: 'assets/slot_s3_cherry.webp', bell: 'assets/slot_s4_bell.webp',
   diamond: 'assets/slot_s5_diamond.webp', horse: 'assets/slot_s6_horseshoe.webp', bag: 'assets/slot_s7_coinbag.webp', wild: 'assets/slot_s8_star_wild.webp' };
 const SYM_NAME = { seven: 'Lucky 7', bar: 'BAR', cherry: 'Cherry', bell: 'Bell', diamond: 'Diamond', horse: 'Horseshoe', bag: 'Coin bag', wild: 'WILD star' };
 const SYM_KEYS = ['seven', 'bar', 'diamond', 'horse', 'bell', 'bag', 'cherry', 'wild'];
 
-const CELL = 76, ROWS = 3, REEL_W = 398 / 3;
+const CELL = 79, ROWS = 3, REEL_W = 397 / 3;
 let coins = 0, bet = 100, busy = false, autoRun = null, strips = null, paytable = null;
 const show = (id, on) => $(id).style.display = on ? 'block' : 'none';
 const num = n => Number(n).toLocaleString('en-US');
@@ -174,7 +177,7 @@ function setReel(r, triple, dim) {   // triple = [top, middle, bottom]
 function startSpinning() {
   for (let r = 0; r < 3; r++) {
     const strip = reelCols[r].querySelector('.strip');
-    // 10 random symbols repeated 3 times: the loop is seamless because one cycle = 760px
+    // 10 random symbols repeated 3 times: the loop is seamless because one cycle = 790px
     const cycle = Array.from({ length: 10 }, () => SYM_KEYS[Math.floor(Math.random() * SYM_KEYS.length)]);
     strip.innerHTML = [...cycle, ...cycle, ...cycle].map(cellHTML).join('');
     strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
@@ -233,7 +236,7 @@ function readBetInput() {   // typed value: check it is a whole number in range
 function paintSpin() {
   const can = !busy && !autoRun && coins >= bet;
   $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : 'assets/slot_06_spin_disabled.webp';
-  $('spin').disabled = !can;
+  $('spin').disabled = !can; $('spinTxt').style.opacity = can ? 1 : .55;
   $('autoTxt').textContent = autoRun ? 'STOP' : 'AUTO';
   $('auto').disabled = busy && !autoRun;
   $('minus').disabled = $('plus').disabled = busy || !!autoRun;
