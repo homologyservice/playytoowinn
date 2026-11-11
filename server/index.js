@@ -550,6 +550,120 @@ app.get('/api/bomb/history', auth, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// =====================================================================
+//  LUCKY CARDS (solo, virtual coins only). 5 face-down cards, the player picks one.
+//  The server shuffles the deck when the round starts; the client only sees the cards after the pick.
+//  Card returns are percent of the bet (integers, so every prize is exact).
+//  Expected return = (0 + 0 + 50 + 100 + 300) / 5 = 90% of the bet, so the house keeps a margin.
+// =====================================================================
+const LUCKY_TIERS = [200, 500, 1000, 3000, 5000];
+const LUCKY_CARDS = { skull: 0, bronze: 50, silver: 100, gold: 300 };   // percent of the bet that comes back
+const LUCKY_DECK = ['skull', 'skull', 'bronze', 'silver', 'gold'];
+const LUCKY_HISTORY_MAX = 10;
+const luckyPrize = (bet, kind) => Math.floor(bet * LUCKY_CARDS[kind] / 100);
+
+const luckySchema = new mongoose.Schema({
+  tgId: { type: Number, required: true },
+  bet: Number,
+  deck: [String],                               // secret until the round ends
+  picked: { type: Number, default: -1 },
+  status: { type: String, default: 'active' },  // active | done
+  prize: { type: Number, default: 0 },          // total returned (bet included), 0 = skull
+  unpaid: { type: Boolean, default: false },    // true only between "round closed" and "coins credited" (crash safety)
+  createdAt: { type: Date, default: Date.now },
+  endedAt: Date,
+});
+luckySchema.index({ tgId: 1, status: 1, createdAt: -1 });
+const LuckyRound = mongoose.model('LuckyRound', luckySchema);
+
+function luckyShuffle(a) {
+  for (let i = a.length - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+const luckyView = (r) => ({ id: String(r._id), bet: r.bet, count: LUCKY_DECK.length, picked: r.picked, status: r.status,
+  cards: r.status === 'done' ? r.deck : null, prize: r.prize, net: r.status === 'done' ? r.prize - r.bet : 0 });
+async function luckyTrim(uid) {   // keep only the latest LUCKY_HISTORY_MAX finished rounds
+  const old = await LuckyRound.find({ tgId: uid, status: 'done', unpaid: { $ne: true } }).sort({ endedAt: -1, createdAt: -1 }).skip(LUCKY_HISTORY_MAX).limit(50);
+  if (old.length) await LuckyRound.deleteMany({ _id: { $in: old.map((r) => r._id) } });
+}
+// Credit a finished round. Safe to call many times: the coins are added exactly once.
+async function luckyPay(roundId, uid, prize) {
+  const g = await LuckyRound.updateOne({ _id: roundId, status: 'done', unpaid: true }, { $set: { unpaid: false } });
+  if (!g.modifiedCount) return;
+  try { await User.updateOne({ tgId: uid }, { $inc: { coins: prize } }); }
+  catch (e) { await LuckyRound.updateOne({ _id: roundId }, { $set: { unpaid: true } }); throw e; }
+}
+async function luckyPayPending(uid) {   // finishes any payout that was interrupted
+  const rows = await LuckyRound.find({ tgId: uid, status: 'done', unpaid: true });
+  for (const r of rows) await luckyPay(r._id, uid, r.prize);
+}
+
+app.get('/api/lucky/state', auth, async (req, res) => {
+  try {
+    await upsertUser(req.tg);
+    await luckyPayPending(req.tg.id);
+    const u = await User.findOne({ tgId: req.tg.id });
+    const r = await LuckyRound.findOne({ tgId: req.tg.id, status: 'active' });
+    res.json({ coins: u.coins, round: r ? luckyView(r) : null, tiers: LUCKY_TIERS, cards: LUCKY_CARDS });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/lucky/play', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, bet = Number(req.body && req.body.bet);
+    if (!LUCKY_TIERS.includes(bet)) return res.status(400).json({ error: 'bad_request' });
+    await withLock('l' + uid, async () => {
+      await upsertUser(req.tg);
+      await luckyPayPending(uid);
+      const open = await LuckyRound.findOne({ tgId: uid, status: 'active' });
+      if (open) return res.status(409).json({ error: 'round_active', round: luckyView(open) });
+      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
+      if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      try {
+        const r = await LuckyRound.create({ tgId: uid, bet, deck: luckyShuffle(LUCKY_DECK.slice()) });
+        res.json({ coins: paid.coins, round: luckyView(r) });
+      } catch (e) {
+        await User.updateOne({ tgId: uid }, { $inc: { coins: bet } });   // never keep the bet if the round could not be created
+        throw e;
+      }
+    });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/lucky/pick', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, index = Number(req.body && req.body.index);
+    if (!Number.isInteger(index) || index < 0 || index >= LUCKY_DECK.length) return res.status(400).json({ error: 'bad_request' });
+    await withLock('l' + uid, async () => {
+      const r = await LuckyRound.findOne({ tgId: uid, status: 'active' });
+      if (!r) return res.status(409).json({ error: 'not_active' });
+      const kind = r.deck[index], prize = luckyPrize(r.bet, kind);
+      const upd = await LuckyRound.updateOne({ _id: r._id, status: 'active' },
+        { $set: { status: 'done', picked: index, prize, endedAt: new Date(), unpaid: prize > 0 } });
+      if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
+      if (prize > 0) {
+        try { await luckyPay(r._id, uid, prize); }
+        catch (e) { console.error('lucky payout pending, will retry', e); }   // stays unpaid; paid on the next state/play call
+      }
+      await luckyTrim(uid);
+      const u = await User.findOne({ tgId: uid });
+      const net = prize - r.bet;
+      res.json({ result: net > 0 ? 'win' : net === 0 ? 'even' : 'lose', kind, picked: index, cards: r.deck,
+        prize, net, bet: r.bet, coins: u.coins });
+    });
+  } catch (e) { fail(res, e); }
+});
+
+app.get('/api/lucky/history', auth, async (req, res) => {
+  try {
+    await luckyPayPending(req.tg.id);
+    const rows = await LuckyRound.find({ tgId: req.tg.id, status: 'done' }).sort({ endedAt: -1, createdAt: -1 }).limit(LUCKY_HISTORY_MAX);
+    const u = await User.findOne({ tgId: req.tg.id });
+    res.json({ coins: u ? u.coins : 0, items: rows.map((r) => ({ id: String(r._id), bet: r.bet, kind: r.deck[r.picked],
+      prize: r.prize, net: r.prize - r.bet, at: (r.endedAt || r.createdAt).getTime() })) });
+  } catch (e) { fail(res, e); }
+});
+
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
