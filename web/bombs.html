@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Bomb Points</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="assets/bomb_01_bg.webp">
+<link rel="preload" as="image" href="assets/bomb_02_title.webp">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="config.js"></script>
 <style>
@@ -41,6 +43,11 @@ button:disabled{cursor:default}
 .mc{border-radius:15px;border:2px solid rgba(175,170,255,.65);background:linear-gradient(rgba(85,70,205,.55),rgba(60,48,175,.5))}
 .mc.start{border-color:#ffe27a;background:linear-gradient(rgba(130,100,235,.8),rgba(90,70,200,.8));box-shadow:0 0 14px rgba(255,215,90,.6);filter:none}
 .mc.start span{filter:none;color:#fff3b0}
+.btn{position:absolute;left:0;right:0;top:0;bottom:7px;border-radius:30px;border:3px solid;pointer-events:none}
+.btn.green{background:linear-gradient(#6af596,#22d45c 52%,#13ad47);border-color:#c4ffd8;box-shadow:0 7px 0 #0b7a31,inset 0 3px 5px rgba(255,255,255,.6)}
+.btn.purple{background:linear-gradient(#9a78ff,#6240e6 52%,#472bbd);border-color:#d4c8ff;box-shadow:0 7px 0 #2c1a8a,inset 0 3px 5px rgba(255,255,255,.5)}
+.btn.blue{background:linear-gradient(#62a0ff,#3060ee 52%,#2244c8);border-color:#c4d6ff;box-shadow:0 7px 0 #162c8a,inset 0 3px 5px rgba(255,255,255,.5)}
+button:active:not(:disabled) .btn{transform:translateY(3px)}
 .tile{width:138px;height:138px;padding:0}
 .tile img.t0{position:absolute;inset:0;width:100%;height:100%}
 .tile.open{animation:flip .45s ease-out both}
@@ -108,12 +115,12 @@ button:disabled{cursor:default}
   <div class="a c" style="left:0;right:0;top:1086px;font-size:21px;opacity:.95">Multiplier increases after each safe coin pick.</div>
 
   <button id="hist" class="press" style="left:29px;top:1128px;width:271px;height:87px">
-   <div class="nine" style="inset:0;--img:url(assets/bomb_19_btn_history.webp);--sl:60;--bw:40px"></div>
-   <div class="a fit" style="inset:0;font-size:30px;font-weight:700;gap:10px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>HISTORY</div>
+   <div class="btn purple"></div>
+   <div class="a fit" style="inset:0 0 7px 0;font-size:30px;font-weight:700;gap:10px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>HISTORY</div>
   </button>
   <button id="play" class="press" style="left:317px;top:1128px;width:373px;height:87px">
-   <div class="nine" style="inset:0;--img:url(assets/bomb_20_btn_play_game_green.webp);--sl:60;--bw:40px"></div>
-   <div class="a fit t" style="inset:0;font-size:34px;font-weight:700;gap:12px"><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY GAME</div>
+   <div class="btn green"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:34px;font-weight:700;gap:12px"><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY GAME</div>
   </button>
   <div class="a c" style="left:0;right:0;top:1236px;font-size:20px;line-height:1.35;opacity:.95">Tiles appear only after you press <span class="gold">PLAY GAME</span>.<br>Reveal a coin, then cash out whenever you want to keep your prize.</div>
  </div>
@@ -147,18 +154,18 @@ button:disabled{cursor:default}
 
  <!-- ================= RESULT ================= -->
  <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
-  <img id="rFrame" class="a pop" style="left:30px;top:361px;width:660px" alt="">
-  <div class="a c" id="rKicker" style="left:0;right:0;top:602px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
+  <img id="rFrame" class="a pop" style="left:0;top:344px;width:706px" alt="">
+  <div class="a c" id="rKicker" style="left:0;right:0;top:604px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
   <img id="rTitle" class="a pop" style="left:230px;top:626px;width:260px" alt="">
   <div class="a c" id="rSub" style="left:100px;right:100px;top:718px;font-size:23px;line-height:1.25"></div>
   <div id="rBanner" class="a fit" style="left:110px;top:758px;width:500px;height:66px;border-radius:20px;font-size:36px;font-weight:700"></div>
-  <button id="rAgain" class="press" style="left:96px;top:846px;width:250px;height:76px">
-   <div class="nine" style="inset:0;--img:url(assets/bomb_20_btn_play_game_green.webp);--sl:60;--bw:36px"></div>
-   <div class="a fit t" style="inset:0;font-size:28px;font-weight:700;gap:8px"><svg width="20" height="22" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY AGAIN</div>
+  <button id="rAgain" class="press" style="left:126px;top:852px;width:236px;height:80px">
+   <div class="btn green"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:26px;font-weight:700;gap:8px"><svg width="18" height="20" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY AGAIN</div>
   </button>
-  <button id="rLobby" class="press" style="left:374px;top:846px;width:250px;height:76px">
-   <div class="nine" style="inset:0;--img:url(assets/bomb_36_btn_lobby_blue.webp);--sl:36 40 36 70;--bw:34px 30px 34px 56px"></div>
-   <div class="a fit t" style="left:58px;right:6px;top:0;bottom:0;font-size:28px;font-weight:700">LOBBY</div>
+  <button id="rLobby" class="press" style="left:382px;top:852px;width:236px;height:80px">
+   <div class="btn blue"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:28px;font-weight:700;gap:10px"><svg width="28" height="28" viewBox="0 0 24 24" fill="#fff"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg>LOBBY</div>
   </button>
  </div>
 
@@ -169,8 +176,8 @@ button:disabled{cursor:default}
   <div class="a c" id="hSub" style="left:0;right:0;top:256px;font-size:20px;opacity:.85">Latest 10 rounds</div>
   <div id="hRows"></div>
   <button id="hClose" class="press" style="left:210px;top:1040px;width:300px;height:84px">
-   <div class="nine" style="inset:0;--img:url(assets/bomb_36_btn_lobby_blue.webp);--sl:36 40 36 70;--bw:34px 30px 34px 56px"></div>
-   <div class="a fit t" style="left:58px;right:6px;top:0;bottom:0;font-size:28px;font-weight:700">CLOSE</div>
+   <div class="btn blue"></div>
+   <div class="a fit t" style="inset:0 0 7px 0;font-size:28px;font-weight:700">CLOSE</div>
   </button>
  </div>
 </div>
@@ -187,6 +194,10 @@ function fit() {
 fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
 
 const A = n => 'assets/bomb_' + n + '.webp';
+/* warm the cache + decode every picture right away, so screens/popups show instantly later */
+['02_title','03_pick','04_btn_back_square','05_btn_settings_square','10_coin_icon_small','11_bomb_icon','12_btn_minus','13_btn_plus','14_slider_track','15_slider_knob',
+ '24_tile_hidden','25_tile_coin','26_tile_bomb','28_btn_cashout_green','29_fx_coin_burst','30_fx_explosion','31_popup_win_frame','32_popup_lose_frame','37_title_you_win','38_title_you_lose']
+ .forEach(n => { const im = new Image(); im.src = A(n); if (im.decode) im.decode().catch(() => {}); });
 const show = (id, on) => $(id).classList.toggle('on', on);
 const num = n => Number(n).toLocaleString('en-US');
 const fmtM = m => (+m.toFixed(2)) + 'x';
@@ -337,7 +348,7 @@ function showResult(kind, d) {
   bn.style.background = win ? 'linear-gradient(#ffe27a,#ffb42c 60%,#f08d14)' : 'linear-gradient(rgba(150,130,190,.75),rgba(95,80,140,.8))';
   bn.style.border = win ? '3px solid #fff0b0' : '2.5px solid rgba(215,200,245,.8)';
   bn.style.boxShadow = win ? 'inset 0 3px 6px rgba(255,255,255,.55),0 0 18px rgba(255,190,50,.5)' : 'inset 0 2px 6px rgba(255,255,255,.25)';
-  const fr = $('rFrame'); fr.style.width = win ? '660px' : '688px'; fr.style.left = win ? '23px' : '30px'; fr.style.top = win ? '361px' : '368px';
+  const fr = $('rFrame'); fr.style.width = win ? '706px' : '736px'; fr.style.left = win ? '0px' : '4px'; fr.style.top = win ? '344px' : '350px';
   $('rKicker').textContent = win ? 'PRIZE SECURED' : 'ROUND OVER';
   $('rSub').textContent = win ? (d.cleared ? 'You found every safe tile!' : `You cashed out after ${d.safe} safe pick${d.safe === 1 ? '' : 's'}.`)
                               : `Bomb hit! Your ${num(d.lost)}-coin entry fee is lost.`;
