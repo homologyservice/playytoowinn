@@ -127,6 +127,11 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- ================= RESULT ================= -->
  <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
   <img id="rFrame" class="a pop" style="left:0;top:344px;width:706px" alt="">
+  <!-- lose popup: lucky-only frame (no bomb art); skull card sits on the red slot -->
+  <div id="rLoseBox" class="a" style="display:none;left:0;top:420px;width:720px;height:600px;pointer-events:none">
+    <img class="a" src="assets/lucky_frame_lose.webp" style="left:0;top:0;width:720px" alt="">
+    <img class="a" src="assets/lucky_05_card_skull.webp" style="left:305px;top:-40px;width:110px;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45))" alt="">
+  </div>
   <div class="a c" id="rKicker" style="left:0;right:0;top:604px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
   <img id="rTitle" class="a pop" style="left:230px;top:626px;width:260px" alt="">
   <div class="a c" id="rSub" style="left:90px;right:90px;top:712px;font-size:21px;line-height:1.25"></div>
@@ -168,7 +173,7 @@ fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fi
 
 const B = n => 'assets/bomb_' + n + '.webp';          // shared art from Bomb Points
 const L = n => 'assets/lucky_' + n + '.webp';          // Lucky Cards art
-const CARD_IMG = { back: L('04_card_back'), skull: L('05_card_skull'), bronze: L('06_card_star_bronze'), silver: L('07_card_star_silver'), gold: L('08_card_star_gold') };
+const CARD_IMG = { back: L('04_card_back_red'), skull: L('05_card_skull'), bronze: L('06_card_star_bronze'), silver: L('07_card_star_silver'), gold: L('08_card_star_gold') };
 const CARD_NAME = { skull: 'Skull', bronze: 'Bronze star', silver: 'Silver star', gold: 'Gold star' };
 /* warm the cache so popups and cards show instantly */
 [CARD_IMG.back, CARD_IMG.skull, CARD_IMG.bronze, CARD_IMG.silver, CARD_IMG.gold, L('10_fx_win_burst'), L('11_fx_skull_smoke'),
@@ -296,6 +301,13 @@ $('play').onclick = () => startRound(bet);
 function showResult(d) {
   const net = d.net, win = net >= 0;                       // a 1x card (even) shows the win frame, with +0
   $('rFrame').src = B(win ? '31_popup_win_frame' : '32_popup_lose_frame');
+  const lose = net < 0;
+  $('rFrame').style.display = lose ? 'none' : 'block';
+  $('rLoseBox').style.display = lose ? 'block' : 'none';
+  // lose layout sits inside the lose frame's blue panel; win layout keeps its original positions
+  const Y = lose ? { k: 600, t: 620, s: 706, b: 752, btn: 836 } : { k: 604, t: 626, s: 712, b: 786, btn: 872 };
+  $('rKicker').style.top = Y.k + 'px'; $('rTitle').style.top = Y.t + 'px'; $('rSub').style.top = Y.s + 'px';
+  $('rBanner').style.top = Y.b + 'px'; $('rAgain').style.top = Y.btn + 'px'; $('rLobby').style.top = Y.btn + 'px';
   $('rTitle').src = B(net > 0 ? '37_title_you_win' : '38_title_you_lose'); $('rTitle').style.display = net === 0 ? 'none' : 'block';
   const bn = $('rBanner');
   bn.style.background = net > 0 ? 'linear-gradient(#ffe27a,#ffb42c 60%,#f08d14)' : net === 0 ? 'linear-gradient(#9db4ff,#5c7bdc)' : 'linear-gradient(rgba(150,130,190,.75),rgba(95,80,140,.8))';
