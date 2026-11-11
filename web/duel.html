@@ -229,7 +229,7 @@ $('play').onclick=async()=>{
 /*  Intro 5s                                                           */
 /* ------------------------------------------------------------------ */
 function startIntro(){
-  state='intro'; initWorld(session.seed); cv.style.display='block'; draw(performance.now());
+  state='intro'; initWorld(session.seed); spawnPipes(); cv.style.display='block'; draw(performance.now());
   show('lobby',false); show('intro',true); show('hud',true); $('exitBtn').style.display='block';
   const o=session.opponent;
   $('hMe').textContent='Your Score: 0'; $('hOpp').textContent=o?`${o.name}: ${o.score}`:'Waiting…';
@@ -250,7 +250,12 @@ function startIntro(){
 /*  Flappy engine (fixed timestep, seeded pipes => both players get the same course) */
 /* ------------------------------------------------------------------ */
 const cv=$('cv'), cx=cv.getContext('2d');
-const H=1280, GROUND=1160, GAP=350, PW=132, SPEED=300, SPACING=450, GRAV=2700, FLAP=-840, RR=34;
+const H=1280, GROUND=1160, PW=132, GRAV=2700, FLAP=-840, RR=34;
+// Difficulty ramps with the pipe number n (same for both players => same course):
+const gapFor=n=>Math.max(270,385-n*4);            // gap shrinks 385 -> 270
+const spaceFor=n=>330+Math.min(n*2,70);           // pipes are close together (like Flappy Bird)
+const swingFor=n=>Math.min(300,160+n*6);          // how far the next gap can jump up/down
+const speedFor=sc=>290+Math.min(sc*5,160);        // scroll speed 290 -> 450
 const PIPE={sx:125,sy:27,sw:263,sh:463,cap:110};
 const ROCKET={sx:10,sy:48,sw:492,sh:402};
 let W=720,S=1,DPR=1;
@@ -260,12 +265,16 @@ resize(); addEventListener('resize',()=>{resize(); if(state!=='run') draw(perfor
 function mulberry(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 let wd; // world
 function initWorld(seed){
-  wd={rnd:mulberry(hash(seed)), rx:Math.max(170,W*.3), ry:560, vy:0, pipes:[], nextX:W+160, score:0, dist:0, t:0, passedOpp:false, dead:false, deadT:0, paused:false};
+  const rx0=Math.max(170,W*.3);
+  wd={rnd:mulberry(hash(seed)), rx:rx0, ry:560, vy:0, pipes:[], nextX:rx0+520, idx:0, prevGy:640, score:0, dist:0, t:0, passedOpp:false, dead:false, deadT:0, paused:false};
 }
 function spawnPipes(){
-  while(wd.nextX<W+PW+60){
-    wd.pipes.push({x:wd.nextX, gy:270+wd.rnd()*620, passed:false});
-    wd.nextX+=SPACING;
+  while(wd.nextX<W+PW+80){
+    const n=wd.idx++, gap=gapFor(n), lo=gap/2+90, hi=GROUND-gap/2-90;
+    let gy=wd.prevGy+(wd.rnd()*2-1)*swingFor(n);
+    gy=Math.max(lo,Math.min(hi,gy)); wd.prevGy=gy;
+    wd.pipes.push({x:wd.nextX, gy, gap, passed:false});
+    wd.nextX+=spaceFor(n);
   }
 }
 function pipeShape(x,y,len,flip){ // rim at (x,y); body extends +len (or -len when flip)
@@ -281,14 +290,15 @@ function step(dt){
   if(state==='intro'){ wd.t+=dt; wd.ry=560+Math.sin(wd.t*3)*14; wd.dist+=60*dt; return; }
   if(state==='dead'){ wd.deadT+=dt; wd.vy=Math.min(900,wd.vy+GRAV*dt); wd.ry=Math.min(GROUND-40,wd.ry+wd.vy*dt); return; }
   if(state!=='run'||wd.paused) return;
-  wd.t+=dt; wd.dist+=SPEED*dt;
+  const SPEED=speedFor(wd.score); wd.t+=dt; wd.dist+=SPEED*dt;
   wd.vy=Math.min(1100,wd.vy+GRAV*dt); wd.ry+=wd.vy*dt;
   if(wd.ry<RR){ wd.ry=RR; wd.vy=0; }
+  wd.nextX-=SPEED*dt;           // the spawn point scrolls with the world
   spawnPipes();
   for(const p of wd.pipes){
     p.x-=SPEED*dt;
     if(!p.passed&&p.x+PW<wd.rx-RR){ p.passed=true; wd.score++; onScore(); }
-    if(circleRect(wd.rx,wd.ry,RR-4,p.x,-50,PW,p.gy-GAP/2+50)||circleRect(wd.rx,wd.ry,RR-4,p.x,p.gy+GAP/2,PW,GROUND-(p.gy+GAP/2))) return crash();
+    if(circleRect(wd.rx,wd.ry,RR-4,p.x,-50,PW,p.gy-p.gap/2+50)||circleRect(wd.rx,wd.ry,RR-4,p.x,p.gy+p.gap/2,PW,GROUND-(p.gy+p.gap/2))) return crash();
   }
   wd.pipes=wd.pipes.filter(p=>p.x>-PW-20);
   if(wd.ry+RR>GROUND) crash();
@@ -312,7 +322,7 @@ function draw(now){
   const cl=IMG['56_clouds'];
   if(cl.complete){ for(let i=0;i<3;i++){ const x=((i*520-wd.dist*.12)%(W+500)+W+500)%(W+500)-250; cx.globalAlpha=.9; cx.drawImage(cl,x,120+i*210,300,150);} cx.globalAlpha=1; }
   // pipes
-  for(const p of wd.pipes){ pipeShape(p.x,p.gy-GAP/2,p.gy-GAP/2+60,true); pipeShape(p.x,p.gy+GAP/2,GROUND-(p.gy+GAP/2)+10,false); }
+  for(const p of wd.pipes){ pipeShape(p.x,p.gy-p.gap/2,p.gy-p.gap/2+60,true); pipeShape(p.x,p.gy+p.gap/2,GROUND-(p.gy+p.gap/2)+10,false); }
   // ground
   const g=IMG['55_ground_strip'];
   cx.fillStyle='#7a4a22'; cx.fillRect(0,GROUND+60,W,H);
