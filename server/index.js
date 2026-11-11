@@ -181,9 +181,9 @@ app.post('/api/duel/finish', auth, async (req, res) => {
 
     let score = Math.floor(Number(req.body.score));
     let forfeit = !!req.body.forfeit;
-    // basic anti-cheat: you cannot pass more pipes than the elapsed time allows (5s countdown + ~1.3s per pipe)
+    // basic anti-cheat: you cannot pass more pipes than the elapsed time allows (5s countdown + at least ~0.65s per pipe at top speed)
     const elapsed = Date.now() - m[role].startedAt.getTime();
-    if (!forfeit && !(score >= 0 && score <= Math.floor(Math.max(0, elapsed - 5000) / 1300) + 1)) forfeit = true;
+    if (!forfeit && !(score >= 0 && score <= Math.floor(Math.max(0, elapsed - 5000) / 650) + 1)) forfeit = true;
     if (forfeit) score = 0;
 
     if (role === 'a') {
