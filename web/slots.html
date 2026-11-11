@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Lucky Slots</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#070d3a;font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+#stage{position:absolute;left:0;top:0;width:720px;height:1400px;transform-origin:0 0;overflow:hidden}
+.a{position:absolute}.c{text-align:center}
+img{display:block;-webkit-user-drag:none;pointer-events:none}
+button,input{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:absolute}
+button:disabled{cursor:default}
+.press:active:not(:disabled){transform:scale(.96)}
+.gold{color:#ffd63a}.cyan{color:#58e1ff}
+.t{text-shadow:0 3px 0 rgba(8,20,110,.85),0 0 8px rgba(8,20,110,.5)}
+.fit{display:flex;align-items:center;justify-content:center;white-space:nowrap}
+.glass{position:absolute;border-radius:30px;border:3px solid rgba(165,205,255,.78);background:linear-gradient(rgba(45,105,235,.36),rgba(20,60,195,.30));box-shadow:inset 0 0 24px rgba(130,185,255,.32),0 0 18px rgba(80,140,255,.3);pointer-events:none}
+.btn{position:absolute;left:0;right:0;top:0;bottom:7px;border-radius:30px;border:3px solid;pointer-events:none}
+.btn.green{background:linear-gradient(#6af596,#22d45c 52%,#13ad47);border-color:#c4ffd8;box-shadow:0 7px 0 #0b7a31,inset 0 3px 5px rgba(255,255,255,.6)}
+.btn.purple{background:linear-gradient(#9a78ff,#6240e6 52%,#472bbd);border-color:#d4c8ff;box-shadow:0 7px 0 #2c1a8a,inset 0 3px 5px rgba(255,255,255,.5)}
+.btn.blue{background:linear-gradient(#62a0ff,#3060ee 52%,#2244c8);border-color:#c4d6ff;box-shadow:0 7px 0 #162c8a,inset 0 3px 5px rgba(255,255,255,.5)}
+.btn.grey{background:linear-gradient(#b8c2d6,#7d889e);border-color:#e4e9f5;box-shadow:0 7px 0 #4a5366}
+button:active:not(:disabled) .btn{transform:translateY(3px)}
+.chip{border-radius:18px;border:2.5px solid rgba(175,170,255,.65);background:linear-gradient(rgba(85,70,205,.6),rgba(60,48,175,.55));font-size:20px;font-weight:700}
+.chip.on{background:linear-gradient(#ffe27a,#ffb02a 55%,#f58a12);border-color:#fff0b0;color:#5a2b00;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+/* reels */
+#reelView{position:absolute;overflow:hidden;border-radius:6px}
+.col{position:absolute;top:0;bottom:0;overflow:hidden}
+.strip{position:absolute;left:0;right:0;top:0;will-change:transform}
+.cell{height:76px;display:flex;align-items:center;justify-content:center}
+.cell img{width:68px;height:68px;transition:filter .2s,transform .2s}
+.cell.hit img{transform:scale(1.12);filter:drop-shadow(0 0 10px #ffd63a) drop-shadow(0 0 4px #fff)}
+.cell.dim img{filter:grayscale(.45) brightness(.7)}
+.strip.spin{animation:spinY .42s linear infinite}
+.strip.blur{filter:blur(1.4px)}
+@keyframes spinY{from{transform:translateY(0)}to{transform:translateY(-760px)}}
+.winline{position:absolute;pointer-events:none;opacity:0;transition:opacity .2s}
+.winline.on{opacity:1}
+.fx{position:absolute;pointer-events:none;opacity:0}
+.fx.on{animation:fxpop .9s ease-out both}
+@keyframes fxpop{0%{transform:scale(.3);opacity:1}100%{transform:scale(1.25);opacity:0}}
+/* message + modal */
+#msg{position:absolute;left:30px;right:30px;top:1338px;text-align:center;font-size:24px;font-weight:700;line-height:1.25;min-height:32px}
+#toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);background:rgba(10,20,90,.94);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#modal{position:absolute;inset:0;background:rgba(5,15,80,.72);display:none;z-index:50}
+#modal.on{display:block}
+.mpanel{position:absolute;left:40px;right:40px;top:260px;bottom:260px;border-radius:34px;padding:28px;background:linear-gradient(rgba(30,60,200,.92),rgba(12,30,140,.95));border:3px solid rgba(190,220,255,.7);box-shadow:0 0 30px rgba(120,160,255,.4)}
+.lbl{font-size:20px;font-weight:700;opacity:.92;margin-bottom:8px}
+.field{width:100%;height:56px;border-radius:18px;border:2.5px solid rgba(175,200,255,.7);background:rgba(8,20,100,.6);color:#fff;text-align:center;font-size:26px;font-weight:700;padding:0 10px;outline:none;position:relative}
+.sel{position:relative}
+</style>
+</head>
+<body>
+<div id="stage">
+ <!-- background -->
+ <img class="a" src="assets/slot_01_bg.webp" style="left:0;top:0;width:720px;height:1400px" alt="">
+
+ <!-- top bar -->
+ <button id="back" class="a press" style="left:24px;top:34px;width:76px;height:76px;border-radius:24px;background:linear-gradient(rgba(60,110,255,.6),rgba(20,50,170,.6));border:3px solid rgba(190,220,255,.7)">
+  <svg width="40" height="40" viewBox="0 0 24 24" style="position:absolute;left:16px;top:14px"><path d="M15 5l-7 7 7 7" fill="none" stroke="#fff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+ </button>
+ <div class="a glass" style="left:112px;top:40px;width:420px;height:64px;border-radius:34px"></div>
+ <img class="a" src="assets/slot_09_coin.webp" style="left:122px;top:48px;width:48px" alt="">
+ <div class="a fit t" id="coins" style="left:176px;top:40px;width:330px;height:64px;font-size:30px;font-weight:700"></div>
+ <button id="help" class="a press" style="left:552px;top:34px;width:76px;height:76px;border-radius:24px;background:linear-gradient(rgba(60,110,255,.6),rgba(20,50,170,.6));border:3px solid rgba(190,220,255,.7);font-size:34px;font-weight:700">?</button>
+
+ <img class="a" src="assets/slot_02_logo.webp" style="left:160px;top:112px;width:400px" alt="">
+
+ <!-- machine -->
+ <img class="a" src="assets/slot_03_machine.webp" style="left:20px;top:236px;width:680px" alt="">
+ <!-- reel frame sits on the machine window (opening scaled to fit) -->
+ <img class="a" src="assets/slot_04_reel_frame.webp" style="left:105px;top:507px;width:491px" alt="">
+ <div id="reelView" style="left:150px;top:532px;width:398px;height:228px;background:rgba(4,12,60,.82)"></div>
+ <img id="winline" class="winline a" src="assets/slot_10_winline.webp" style="left:147px;top:637px;width:406px;height:19px;filter:drop-shadow(0 0 6px #ffd63a) drop-shadow(0 0 2px #fff)" alt="">
+ <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:199px;top:496px;width:300px;height:300px" alt="">
+
+ <!-- bet -->
+ <button id="minus" class="a press" style="left:44px;top:1104px;width:68px;height:68px"><img src="assets/slot_08_btn_minus.webp" style="width:100%" alt=""></button>
+ <div class="a glass" style="left:126px;top:1108px;width:468px;height:60px;border-radius:30px"></div>
+ <div class="a fit" style="left:126px;top:1108px;width:468px;height:60px;font-size:20px;font-weight:700;gap:10px">
+  <span style="opacity:.9">BET</span>
+  <input id="bet" type="number" inputmode="numeric" min="10" max="5000" step="1" class="field" style="position:static;width:220px;height:46px;font-size:26px;border-radius:14px;padding:0 8px">
+ </div>
+ <button id="plus" class="a press" style="left:608px;top:1104px;width:68px;height:68px"><img src="assets/slot_07_btn_plus.webp" style="width:100%" alt=""></button>
+
+ <div id="presets" class="a" style="left:30px;top:1180px;width:660px;height:44px;display:flex;gap:8px;justify-content:center"></div>
+
+ <!-- spin row -->
+ <button id="auto" class="a press" style="left:40px;top:1244px;width:170px;height:84px"><div class="btn blue"></div><div class="a fit t" id="autoTxt" style="inset:0 0 7px 0;font-size:24px;font-weight:700">AUTO</div></button>
+ <button id="spin" class="a press" style="left:250px;top:1236px;width:220px;height:92px"><img id="spinImg" src="assets/slot_05_spin_green.webp" style="width:100%" alt=""><div class="a fit t" style="left:36%;right:4%;top:0;bottom:0;font-size:30px;font-weight:700;padding-top:4px">SPIN</div></button>
+ <button id="paytableBtn" class="a press" style="left:510px;top:1244px;width:170px;height:84px"><div class="btn purple"></div><div class="a fit t" style="inset:0 0 7px 0;font-size:24px;font-weight:700">PAYTABLE</div></button>
+
+ <div id="msg" class="a t"></div>
+
+ <!-- auto-spin setup -->
+ <div id="modal">
+  <div class="mpanel" id="autoPanel" style="display:none">
+   <div class="a c t" style="left:0;right:0;top:20px;font-size:34px;font-weight:700;color:#ffd63a">AUTO SPIN</div>
+   <div class="a" style="left:28px;top:90px;right:28px">
+    <div class="lbl">Number of spins</div>
+    <div id="counts" style="display:flex;gap:10px"></div>
+    <div class="lbl" style="margin-top:22px">Stop when one spin wins at least (coins, 0 = off)</div>
+    <input id="stopWin" class="field" type="number" min="0" step="1" value="0">
+    <div class="lbl" style="margin-top:18px">Stop when coins fall below (0 = off)</div>
+    <input id="stopLow" class="field" type="number" min="0" step="1" value="0">
+    <div class="lbl" style="margin-top:18px;font-weight:600;opacity:.8;font-size:17px">Auto spin also stops when you do not have enough coins for the bet.</div>
+   </div>
+   <button id="autoCancel" class="a press" style="left:28px;bottom:28px;width:250px;height:76px"><div class="btn grey"></div><div class="a fit t" style="inset:0 0 7px 0;font-size:24px;font-weight:700">CANCEL</div></button>
+   <button id="autoStart" class="a press" style="right:28px;bottom:28px;width:250px;height:76px"><div class="btn green"></div><div class="a fit t" style="inset:0 0 7px 0;font-size:24px;font-weight:700">START</div></button>
+  </div>
+
+  <div class="mpanel" id="helpPanel" style="display:none;overflow:hidden">
+   <div class="a c t" style="left:0;right:0;top:20px;font-size:34px;font-weight:700;color:#ffd63a">PAYTABLE</div>
+   <div id="ptRows" class="a" style="left:28px;right:28px;top:84px"></div>
+   <div class="a" style="left:28px;right:28px;bottom:130px;font-size:18px;line-height:1.35;opacity:.95">
+    <b>How it works:</b> 3 reels spin. The win line is the <b>middle row</b>. Get 3 of the same symbol on the win line to win (bet × multiplier). The <b>star (WILD)</b> stands in for any symbol. Each spin has a fixed chance of each symbol. The expected return is about 92.6% of your bets, so over time you get back a bit less than you bet.
+   </div>
+   <button id="helpClose" class="a press" style="left:50%;transform:translateX(-50%);bottom:24px;width:250px;height:76px"><div class="btn blue"></div><div class="a fit t" style="inset:0 0 7px 0;font-size:24px;font-weight:700">CLOSE</div></button>
+  </div>
+ </div>
+</div>
+<div id="toast"></div>
+
+<script src="slots_math.js"></script>
+<script src="common.js"></script>
+<script>
+/* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
+const SW = 720, SH = 1400; let SC = 1;
+const stage = $('stage');
+function fit() { const w = innerWidth, h = innerHeight; SC = Math.min(w / SW, h / SH); stage.style.transform = `translate(${(w - SW * SC) / 2}px,${(h - SH * SC) / 2}px) scale(${SC})`; }
+fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
+
+const SYM_IMG = { seven: 'assets/slot_s1_seven.webp', bar: 'assets/slot_s2_bar.webp', cherry: 'assets/slot_s3_cherry.webp', bell: 'assets/slot_s4_bell.webp',
+  diamond: 'assets/slot_s5_diamond.webp', horse: 'assets/slot_s6_horseshoe.webp', bag: 'assets/slot_s7_coinbag.webp', wild: 'assets/slot_s8_star_wild.webp' };
+const SYM_NAME = { seven: 'Lucky 7', bar: 'BAR', cherry: 'Cherry', bell: 'Bell', diamond: 'Diamond', horse: 'Horseshoe', bag: 'Coin bag', wild: 'WILD star' };
+const SYM_KEYS = ['seven', 'bar', 'diamond', 'horse', 'bell', 'bag', 'cherry', 'wild'];
+
+const CELL = 76, ROWS = 3, REEL_W = 398 / 3;
+let coins = 0, bet = 100, busy = false, autoRun = null, strips = null, paytable = null;
+const show = (id, on) => $(id).style.display = on ? 'block' : 'none';
+const num = n => Number(n).toLocaleString('en-US');
+const ERR = { not_enough_coins: 'Not enough coins for this bet', bad_request: 'Invalid bet', network_error: 'Connection problem, try again', server_error: 'Server problem, try again', unauthorized: 'Please reopen from the bot button' };
+const errMsg = e => ERR[e && e.message] || 'Something went wrong';
+
+/* ---------- reels: build 3 columns ---------- */
+const reelCols = [];
+function buildReels() {
+  const view = $('reelView'); view.innerHTML = '';
+  for (let r = 0; r < 3; r++) {
+    const col = document.createElement('div'); col.className = 'col';
+    col.style.left = (r * REEL_W) + 'px'; col.style.width = REEL_W + 'px';
+    col.innerHTML = '<div class="strip"></div>';
+    view.appendChild(col); reelCols.push(col);
+  }
+  // divider lines between reels (inside the window)
+  for (let r = 1; r < 3; r++) { const d = document.createElement('div'); d.className = 'a'; d.style.cssText = `left:${r * REEL_W - 1}px;top:0;width:2px;height:100%;background:rgba(190,220,255,.35)`; view.appendChild(d); }
+  // show a neutral 3-row result before the first spin
+  for (let r = 0; r < 3; r++) setReel(r, ['bell', 'seven', 'cherry'], false);
+}
+const cellHTML = k => `<div class="cell"><img src="${SYM_IMG[k]}" alt="${SYM_NAME[k]}"></div>`;
+function setReel(r, triple, dim) {   // triple = [top, middle, bottom]
+  const strip = reelCols[r].querySelector('.strip');
+  strip.classList.remove('spin', 'blur'); strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
+  strip.innerHTML = triple.map(cellHTML).join('');
+  strip.querySelectorAll('.cell').forEach((c, i) => { if (i === 1) c.classList.toggle('dim', dim); });
+}
+// fast endless scroll while waiting for the server
+function startSpinning() {
+  for (let r = 0; r < 3; r++) {
+    const strip = reelCols[r].querySelector('.strip');
+    // 10 random symbols repeated 3 times: the loop is seamless because one cycle = 760px
+    const cycle = Array.from({ length: 10 }, () => SYM_KEYS[Math.floor(Math.random() * SYM_KEYS.length)]);
+    strip.innerHTML = [...cycle, ...cycle, ...cycle].map(cellHTML).join('');
+    strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
+    strip.classList.add('blur'); void strip.offsetWidth; strip.classList.add('spin');
+  }
+  $('winline').classList.remove('on'); $('fx').classList.remove('on');
+  document.querySelectorAll('.cell').forEach(c => c.classList.remove('hit', 'dim'));
+}
+// stop reel r on the server's result. The current list is kept and the strip slows to the result.
+function stopReel(r, triple, ms) {
+  return new Promise(resolve => {
+    const strip = reelCols[r].querySelector('.strip');
+    const y = new DOMMatrixReadOnly(getComputedStyle(strip).transform).m42 || 0;   // where it is now (px)
+    strip.classList.remove('spin'); strip.style.transition = 'none'; strip.style.transform = `translateY(${y}px)`;
+    // append the result rows after the current list, then scroll down to them
+    const list = strip.innerHTML + triple.map(cellHTML).join('');
+    const count = strip.querySelectorAll('.cell').length;
+    strip.innerHTML = list; void strip.offsetWidth;
+    const target = -count * CELL;
+    strip.style.transition = `transform ${ms}ms cubic-bezier(.16,.84,.24,1)`;
+    strip.style.transform = `translateY(${target}px)`;
+    setTimeout(() => {
+      strip.style.transition = 'none'; strip.classList.remove('blur');
+      // keep only the 3 visible rows so the strip stays small
+      strip.innerHTML = triple.map(cellHTML).join(''); strip.style.transform = 'translateY(0)';
+      resolve();
+    }, ms + 30);
+  });
+}
+
+/* ---------- lobby ---------- */
+function setCoins() { $('coins').textContent = num(coins) + ' COINS'; }
+function buildPresets() {
+  $('presets').innerHTML = SLOT_BET_PRESETS.map(v => `<button class="chip press" data-v="${v}" style="position:static;flex:1;height:44px">${num(v)}</button>`).join('');
+  $('presets').onclick = e => { const b = e.target.closest('.chip'); if (b) setBet(+b.dataset.v); };
+}
+function paintPresets() { document.querySelectorAll('#presets .chip').forEach(b => b.classList.toggle('on', +b.dataset.v === bet)); }
+function setBet(v) {
+  v = Math.round(Number(v));
+  if (!Number.isFinite(v)) v = bet;
+  v = Math.max(SLOT_BET_MIN, Math.min(SLOT_BET_MAX, v));
+  bet = v; $('bet').value = v; paintPresets(); paintSpin(); haptic('light');
+}
+function stepBet(d) {   // steps: presets first, then +/- 10
+  const idx = SLOT_BET_PRESETS.indexOf(bet);
+  if (d > 0) { const nxt = SLOT_BET_PRESETS.find(v => v > bet); setBet(nxt !== undefined ? nxt : bet + 10); }
+  else { const prv = [...SLOT_BET_PRESETS].reverse().find(v => v < bet); setBet(prv !== undefined ? prv : bet - 10); }
+}
+function readBetInput() {   // typed value: check it is a whole number in range
+  const raw = $('bet').value.trim();
+  if (!/^\d+$/.test(raw)) { toast('Bet must be a whole number'); $('bet').value = bet; return; }
+  const v = Number(raw);
+  if (v < SLOT_BET_MIN || v > SLOT_BET_MAX) { toast('Bet must be between ' + num(SLOT_BET_MIN) + ' and ' + num(SLOT_BET_MAX)); $('bet').value = bet; return; }
+  setBet(v);
+}
+function paintSpin() {
+  const can = !busy && !autoRun && coins >= bet;
+  $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : 'assets/slot_06_spin_disabled.webp';
+  $('spin').disabled = !can;
+  $('autoTxt').textContent = autoRun ? 'STOP' : 'AUTO';
+  $('auto').disabled = busy && !autoRun;
+  $('minus').disabled = $('plus').disabled = busy || !!autoRun;
+  $('bet').disabled = busy || !!autoRun;
+}
+function toast(msg) {
+  let t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800);
+}
+function haptic(kind) { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(kind || 'light'); } catch (e) {} }
+
+/* ---------- one spin ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function spinOnce() {   // returns the server result, or null if it failed
+  busy = true; paintSpin(); $('msg').textContent = ''; startSpinning();
+  let res = null;
+  try {
+    res = await api.slotSpin({ bet });
+  } catch (e) {
+    for (let r = 0; r < 3; r++) setReel(r, ['bell', 'seven', 'cherry'], false);
+    toast(errMsg(e));
+    busy = false; paintSpin(); return null;
+  }
+  coins = res.coins; setCoins();
+  // stop reels one by one, left to right
+  const stops = [0, 1, 2].map(r => stopReel(r, res.reels[r], 900 + r * 420));
+  await Promise.all(stops);
+  // highlight the win line
+  const win = res.win > 0;
+  reelCols.forEach((col) => {
+    const cells = col.querySelectorAll('.cell');
+    cells.forEach((c, i) => { if (i === 1) { if (win) c.classList.add('hit'); else c.classList.add('dim'); } });
+  });
+  if (win) {
+    $('winline').classList.add('on');
+    $('fx').classList.remove('on'); void $('fx').offsetWidth; $('fx').classList.add('on');
+    haptic('success');
+    $('msg').innerHTML = `<span class="gold">${SYM_NAME[res.sym]} ×${res.mult}</span> · WIN <span class="gold">+${num(res.win)}</span>`;
+  } else {
+    haptic('error');
+    $('msg').innerHTML = `No win this time. <span style="opacity:.8">Try again!</span>`;
+  }
+  busy = false; paintSpin();
+  return res;
+}
+$('spin').onclick = () => { if (!busy && !autoRun) spinOnce(); };
+
+/* ---------- auto spin ---------- */
+let autoCount = 25;
+function buildCounts() {
+  $('counts').innerHTML = [10, 25, 50, 100].map(n => `<button class="chip press" data-n="${n}" style="position:static;flex:1;height:52px">${n}</button>`).join('');
+  $('counts').onclick = e => { const b = e.target.closest('.chip'); if (!b) return; autoCount = +b.dataset.n; paintCounts(); };
+}
+function paintCounts() { document.querySelectorAll('#counts .chip').forEach(b => b.classList.toggle('on', +b.dataset.n === autoCount)); }
+$('auto').onclick = () => {
+  if (autoRun) { autoRun.stop = true; $('msg').textContent = 'Auto spin will stop after this spin.'; paintSpin(); return; }
+  if (busy) return;
+  readBetInput();
+  show('modal', true); $('autoPanel').style.display = 'block'; $('helpPanel').style.display = 'none'; paintCounts();
+};
+$('autoCancel').onclick = () => show('modal', false);
+$('autoStart').onclick = async () => {
+  const stopWin = Math.max(0, Math.floor(Number($('stopWin').value) || 0));
+  const stopLow = Math.max(0, Math.floor(Number($('stopLow').value) || 0));
+  show('modal', false);
+  autoRun = { left: autoCount, stop: false };
+  paintSpin(); haptic('medium');
+  let spins = 0, total = 0, reason = 'finished';
+  while (autoRun && !autoRun.stop && autoRun.left > 0) {
+    if (coins < bet) { reason = 'not enough coins'; break; }
+    if (stopLow > 0 && coins < stopLow) { reason = 'coins below your limit'; break; }
+    const res = await spinOnce();
+    if (!res) { reason = 'error'; break; }
+    spins++; total += res.net; autoRun.left--;
+    if (stopWin > 0 && res.win >= stopWin) { reason = 'big win'; break; }
+    await sleep(350);
+  }
+  if (autoRun && autoRun.stop && reason === 'finished') reason = 'stopped by you';
+  autoRun = null; paintSpin();
+  $('msg').innerHTML = `Auto spin done: ${spins} spin${spins === 1 ? '' : 's'} (${reason}). Net <span class="${total >= 0 ? 'gold' : ''}">${total >= 0 ? '+' : ''}${num(total)}</span>`;
+};
+
+/* ---------- paytable ---------- */
+function buildPaytable() {
+  $('ptRows').innerHTML = SYM_KEYS.slice().reverse().map((k, i) => `
+    <div class="a" style="left:0;right:0;top:${i * 58}px;height:52px;display:flex;align-items:center;gap:14px">
+      <img src="${SYM_IMG[k]}" style="width:48px;height:48px" alt="">
+      <div style="flex:1;font-size:22px;font-weight:700">${SYM_NAME[k]} <span style="opacity:.8;font-size:17px">×3</span></div>
+      <div class="gold" style="font-size:26px;font-weight:700">×${paytable ? paytable[k] : ''}</div>
+    </div>`).join('');
+}
+$('paytableBtn').onclick = () => { show('modal', true); $('autoPanel').style.display = 'none'; $('helpPanel').style.display = 'block'; };
+$('help').onclick = $('paytableBtn').onclick;
+$('helpClose').onclick = () => show('modal', false);
+
+/* ---------- inputs ---------- */
+$('minus').onclick = () => stepBet(-1);
+$('plus').onclick = () => stepBet(1);
+$('bet').addEventListener('change', readBetInput);
+$('bet').addEventListener('keydown', e => { if (e.key === 'Enter') { e.target.blur(); } });
+$('back').onclick = () => { location.href = 'index.html' + location.search; };
+
+/* ---------- boot ---------- */
+async function boot() {
+  try {
+    const s = await api.slotState();
+    coins = s.coins; paytable = s.paytable; setCoins(); buildPaytable();
+    if (!SLOT_BET_PRESETS.includes(bet)) bet = SLOT_BET_PRESETS[1];
+    setBet(bet);
+  } catch (e) { toast(errMsg(e)); }
+  paintSpin();
+}
+buildReels(); buildPresets(); buildCounts(); setBet(bet); paintCounts();
+boot();
+</script>
+</body>
+</html>

@@ -53,6 +53,10 @@ const LUCKY_CARDS = { skull: 0, bronze: 50, silver: 100, gold: 300 };   // perce
 const LUCKY_DECK = ['skull', 'skull', 'bronze', 'silver', 'gold'];
 const luckyPrize = (bet, kind) => Math.floor(bet * LUCKY_CARDS[kind] / 100);
 
+/* Slot Machine limits (same as server/index.js; the math itself is in slots_math.js) */
+const SLOT_BET_PRESETS = [50, 100, 200, 500, 600];
+const SLOT_BET_MIN = 10, SLOT_BET_MAX = 5000;
+
 /* Demo mode: everything runs in this browser (localStorage). Used before the server is connected.
    It follows the same rules as the server: max 5 open slots, max 10 history rows. */
 const WAIT_MAX = 5, HISTORY_MAX = 10;
@@ -195,6 +199,17 @@ const Mock = (() => {
       return { result: net > 0 ? 'win' : net === 0 ? 'even' : 'lose', kind, picked: index, cards: r.deck, prize, net, bet: r.bet, coins: s.coins };
     },
     async luckyHistory() { return { coins: s.coins, items: lk().hist.slice(0, 10) }; },
+    /* ---- Slot Machine (demo): same math as the server ---- */
+    async slotState() { return { coins: s.coins, presets: SLOT_BET_PRESETS, min: SLOT_BET_MIN, max: SLOT_BET_MAX, strips: SlotMath.STRIPS, paytable: SlotMath.PAYTABLE }; },
+    async slotSpin({ bet }) {
+      if (!Number.isInteger(bet) || bet < SLOT_BET_MIN || bet > SLOT_BET_MAX) throw new Error('bad_request');
+      if (s.coins < bet) throw new Error('not_enough_coins');
+      s.coins -= bet;
+      const stops = [0, 1, 2].map(() => Math.floor(Math.random() * SlotMath.STRIP_LEN));
+      const { mult, sym } = SlotMath.evaluate(stops); const win = bet * mult;
+      s.coins += win; save(s);
+      return { coins: s.coins, bet, stops, reels: stops.map((x, r) => SlotMath.visible(r, x)), line: SlotMath.payline(stops), sym, mult, win, net: win - bet };
+    },
   };
 })();
 
@@ -214,6 +229,8 @@ const api = LIVE ? {
   luckyPlay: b => call('/api/lucky/play', b),
   luckyPick: b => call('/api/lucky/pick', b),
   luckyHistory: () => call('/api/lucky/history'),
+  slotState: () => call('/api/slots/state'),
+  slotSpin: b => call('/api/slots/spin', b),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */
