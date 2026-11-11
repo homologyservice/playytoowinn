@@ -394,6 +394,130 @@ app.post('/api/duel/claim', auth, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+
+// =====================================================================
+//  BOMB POINTS (solo, virtual coins only). The server owns the bombs, the client only sees tiles it picked.
+// =====================================================================
+const BOMB_ENTRIES = [1000, 2000, 5000, 15000];
+const BOMB_MIN = 3, BOMB_MAX = 15, BOMB_TILES = 16;
+const BOMB_LADDER = [1.2, 1.25, 1.35, 1.4, 1.5, 1.8, 2, 2.5, 3, 3.5, 4, 4.6, 5];   // not selectable: it just rises with each safe pick
+const BOMB_HISTORY_MAX = 10;
+// bombs=3 starts at 1.2x, 4 at 1.25x, 5 at 1.35x ...; every further safe pick climbs one step (capped at 5x)
+const bombMult = (bombs, safe) => safe < 1 ? 1 : BOMB_LADDER[Math.min(BOMB_LADDER.length - 1, bombs - BOMB_MIN + safe - 1)];
+const bombPrize = (entry, mult) => Math.floor(entry * mult);
+
+const BombRound = mongoose.model('BombRound', new mongoose.Schema({
+  tgId: { type: Number, required: true },
+  entry: Number, bombs: Number,
+  mines: [Number],                              // secret until the round ends
+  picks: [Number],                              // safe tiles already revealed
+  safe: { type: Number, default: 0 },
+  status: { type: String, default: 'active' },  // active | cashed | lost
+  prize: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+  endedAt: Date,
+}));
+BombRound.collection.createIndex({ tgId: 1, status: 1, createdAt: -1 }).catch(() => {});
+
+function bombShuffle(n, k) {   // k distinct random tiles out of n, cryptographically random
+  const a = Array.from({ length: n }, (_, i) => i);
+  for (let i = n - 1; i > 0; i--) { const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; }
+  return a.slice(0, k).sort((x, y) => x - y);
+}
+const bombView = (r) => ({ id: String(r._id), entry: r.entry, bombs: r.bombs, picks: r.picks, safe: r.safe,
+  mult: bombMult(r.bombs, r.safe), prize: r.safe ? bombPrize(r.entry, bombMult(r.bombs, r.safe)) : 0,
+  nextMult: bombMult(r.bombs, r.safe + 1) });
+async function bombTrim(uid) {   // keep only the latest BOMB_HISTORY_MAX finished rounds (oldest are deleted)
+  const old = await BombRound.find({ tgId: uid, status: { $ne: 'active' } }).sort({ endedAt: -1, createdAt: -1 }).skip(BOMB_HISTORY_MAX).limit(50);
+  if (old.length) await BombRound.deleteMany({ _id: { $in: old.map((r) => r._id) } });
+}
+
+app.get('/api/bomb/state', auth, async (req, res) => {
+  try {
+    const u = await upsertUser(req.tg);
+    const r = await BombRound.findOne({ tgId: req.tg.id, status: 'active' });
+    res.json({ coins: u.coins, round: r ? bombView(r) : null });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/bomb/start', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, entry = Number(req.body && req.body.entry), bombs = Number(req.body && req.body.bombs);
+    if (!BOMB_ENTRIES.includes(entry) || !Number.isInteger(bombs) || bombs < BOMB_MIN || bombs > BOMB_MAX) return res.status(400).json({ error: 'bad_request' });
+    await withLock('b' + uid, async () => {
+      await upsertUser(req.tg);
+      const open = await BombRound.findOne({ tgId: uid, status: 'active' });
+      if (open) return res.status(409).json({ error: 'round_active', round: bombView(open) });
+      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: entry } }, { $inc: { coins: -entry } }, { new: true });
+      if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      try {
+        const r = await BombRound.create({ tgId: uid, entry, bombs, mines: bombShuffle(BOMB_TILES, bombs) });
+        res.json({ coins: paid.coins, round: bombView(r) });
+      } catch (e) {
+        await User.updateOne({ tgId: uid }, { $inc: { coins: entry } });   // never keep the fee if the round could not be created
+        throw e;
+      }
+    });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/bomb/pick', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, tile = Number(req.body && req.body.tile);
+    if (!Number.isInteger(tile) || tile < 0 || tile >= BOMB_TILES) return res.status(400).json({ error: 'bad_request' });
+    await withLock('b' + uid, async () => {
+      const r = await BombRound.findOne({ tgId: uid, status: 'active' });
+      if (!r) return res.status(409).json({ error: 'not_active' });
+      if (r.picks.includes(tile)) return res.status(409).json({ error: 'already_picked' });
+      const now = new Date();
+      if (r.mines.includes(tile)) {
+        const upd = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'lost', endedAt: now, prize: 0 } });
+        if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
+        await bombTrim(uid);
+        const u = await User.findOne({ tgId: uid });
+        return res.json({ result: 'bomb', tile, mines: r.mines, safe: r.safe, lost: r.entry, coins: u.coins });
+      }
+      const safe = r.safe + 1, mult = bombMult(r.bombs, safe), prize = bombPrize(r.entry, mult);
+      const upd = await BombRound.updateOne({ _id: r._id, status: 'active', safe: r.safe }, { $set: { safe }, $addToSet: { picks: tile } });
+      if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
+      if (safe >= BOMB_TILES - r.bombs) {   // every safe tile found: cash out automatically
+        const done = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'cashed', endedAt: now, prize } });
+        if (!done.modifiedCount) return res.status(409).json({ error: 'not_active' });
+        const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
+        await bombTrim(uid);
+        return res.json({ result: 'cleared', tile, safe, mult, prize, mines: r.mines, coins: u.coins });
+      }
+      res.json({ result: 'safe', tile, safe, mult, prize, nextMult: bombMult(r.bombs, safe + 1) });
+    });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/bomb/cashout', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    await withLock('b' + uid, async () => {
+      const r = await BombRound.findOne({ tgId: uid, status: 'active' });
+      if (!r) return res.status(409).json({ error: 'not_active' });
+      if (r.safe < 1) return res.status(400).json({ error: 'nothing_to_cash' });
+      const prize = bombPrize(r.entry, bombMult(r.bombs, r.safe));
+      const upd = await BombRound.updateOne({ _id: r._id, status: 'active' }, { $set: { status: 'cashed', endedAt: new Date(), prize } });
+      if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
+      const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
+      await bombTrim(uid);
+      res.json({ result: 'cashed', prize, safe: r.safe, mult: bombMult(r.bombs, r.safe), mines: r.mines, coins: u.coins });
+    });
+  } catch (e) { fail(res, e); }
+});
+
+app.get('/api/bomb/history', auth, async (req, res) => {
+  try {
+    const rows = await BombRound.find({ tgId: req.tg.id, status: { $ne: 'active' } }).sort({ endedAt: -1, createdAt: -1 }).limit(BOMB_HISTORY_MAX);
+    const u = await User.findOne({ tgId: req.tg.id });
+    res.json({ coins: u ? u.coins : 0, items: rows.map((r) => ({ id: String(r._id), entry: r.entry, bombs: r.bombs, safe: r.safe,
+      result: r.status === 'cashed' ? 'win' : 'loss', prize: r.prize, at: (r.endedAt || r.createdAt).getTime() })) });
+  } catch (e) { fail(res, e); }
+});
+
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
@@ -415,4 +539,4 @@ async function main() {
 }
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
 
-module.exports = { app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
+module.exports = { BombRound, bombMult, app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
