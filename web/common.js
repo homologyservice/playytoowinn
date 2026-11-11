@@ -41,6 +41,11 @@ async function call(path, body) {
   return j;
 }
 
+/* Bomb Points rules (the server is the source of truth; these are for display + demo mode) */
+const BOMB_ENTRIES = [1000, 2000, 5000, 15000];
+const BOMB_LADDER = [1.2, 1.25, 1.35, 1.4, 1.5, 1.8, 2, 2.5, 3, 3.5, 4, 4.6, 5];
+const bombMult = (bombs, safe) => safe < 1 ? 1 : BOMB_LADDER[Math.min(BOMB_LADDER.length - 1, bombs - 3 + safe - 1)];
+
 /* Demo mode: everything runs in this browser (localStorage). Used before the server is connected.
    It follows the same rules as the server: max 5 open slots, max 10 history rows. */
 const WAIT_MAX = 5, HISTORY_MAX = 10;
@@ -52,6 +57,13 @@ const Mock = (() => {
   const name = () => (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Player';
   const rid = () => Math.random().toString(36).slice(2, 10);
   const oppName = () => 'Player ' + (1000 + Math.floor(Math.random() * 9000));
+  const bomb = () => (s.bomb = s.bomb || { round: null, hist: [] });
+  const bview = r => ({ id: r.id, entry: r.entry, bombs: r.bombs, picks: r.picks, safe: r.safe,
+    mult: bombMult(r.bombs, r.safe), prize: r.safe ? Math.floor(r.entry * bombMult(r.bombs, r.safe)) : 0, nextMult: bombMult(r.bombs, r.safe + 1) });
+  function bend(b, r, result, prize) { // finish a round and keep only the latest 10 (oldest deleted)
+    b.round = null; b.hist.unshift({ id: r.id, entry: r.entry, bombs: r.bombs, safe: r.safe, result, prize, at: Date.now() });
+    b.hist = b.hist.slice(0, 10);
+  }
   function settle() { // pending matches get an opponent after 20s (demo only)
     const now = Date.now();
     s.matches.forEach(m => {
@@ -119,6 +131,34 @@ const Mock = (() => {
       const items = s.matches.slice().sort((x, y) => y.at - x.at).slice(0, HISTORY_MAX);
       return { items, coins: s.coins, hearts: s.hearts, ...slots() };
     },
+    /* ---- Bomb Points (demo): same rules as the server ---- */
+    async bombState() { const b = bomb(); return { coins: s.coins, round: b.round ? bview(b.round) : null }; },
+    async bombStart({ entry, bombs }) {
+      const b = bomb();
+      if (!BOMB_ENTRIES.includes(entry) || !(bombs >= 3 && bombs <= 15)) throw new Error('bad_request');
+      if (b.round) throw new Error('round_active');
+      if (s.coins < entry) throw new Error('not_enough_coins');
+      s.coins -= entry;
+      const t = Array.from({ length: 16 }, (_, i) => i).sort(() => Math.random() - .5);
+      b.round = { id: rid(), entry, bombs, mines: t.slice(0, bombs), picks: [], safe: 0, at: Date.now() };
+      save(s); return { coins: s.coins, round: bview(b.round) };
+    },
+    async bombPick({ tile }) {
+      const b = bomb(), r = b.round; if (!r) throw new Error('not_active');
+      if (r.picks.includes(tile)) throw new Error('already_picked');
+      if (r.mines.includes(tile)) { bend(b, r, 'loss', 0); save(s); return { result: 'bomb', tile, mines: r.mines, safe: r.safe, lost: r.entry, coins: s.coins }; }
+      r.picks.push(tile); r.safe++;
+      const mult = bombMult(r.bombs, r.safe), prize = Math.floor(r.entry * mult);
+      if (r.safe >= 16 - r.bombs) { s.coins += prize; bend(b, r, 'win', prize); save(s); return { result: 'cleared', tile, safe: r.safe, mult, prize, mines: r.mines, coins: s.coins }; }
+      save(s); return { result: 'safe', tile, safe: r.safe, mult, prize, nextMult: bombMult(r.bombs, r.safe + 1) };
+    },
+    async bombCashout() {
+      const b = bomb(), r = b.round; if (!r) throw new Error('not_active'); if (r.safe < 1) throw new Error('nothing_to_cash');
+      const mult = bombMult(r.bombs, r.safe), prize = Math.floor(r.entry * mult);
+      s.coins += prize; bend(b, r, 'win', prize); save(s);
+      return { result: 'cashed', prize, safe: r.safe, mult, mines: r.mines, coins: s.coins };
+    },
+    async bombHistory() { return { coins: s.coins, items: bomb().hist.slice(0, 10) }; },
     async claim(id) {
       const m = s.matches.find(x => x.id === id);
       if (!m || m.claimed || !m.prize) throw new Error('nothing');
@@ -135,6 +175,11 @@ const api = LIVE ? {
   revive: id => call('/api/duel/revive', { matchId: id }),
   history: () => call('/api/duel/history'),
   claim: id => call('/api/duel/claim', { matchId: id }),
+  bombState: () => call('/api/bomb/state'),
+  bombStart: b => call('/api/bomb/start', b),
+  bombPick: b => call('/api/bomb/pick', b),
+  bombCashout: () => call('/api/bomb/cashout', {}),
+  bombHistory: () => call('/api/bomb/history'),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */

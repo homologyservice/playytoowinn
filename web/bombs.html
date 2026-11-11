@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Bomb Points</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
+html,body{height:100%;overflow:hidden;background:#1b3fc9 url(assets/bomb_01_bg.webp) center/cover no-repeat;
+ font-family:"Fredoka","Nunito","Segoe UI",system-ui,sans-serif;font-weight:600;color:#fff;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;touch-action:manipulation}
+#stage{position:absolute;left:0;top:0;width:720px;height:1400px;transform-origin:0 0}
+.a{position:absolute}.c{text-align:center}
+img{display:block;-webkit-user-drag:none;pointer-events:none}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;position:absolute}
+button>img{width:100%}
+button:disabled{cursor:default}
+.press:active:not(:disabled){transform:scale(.96)}
+.layer{position:absolute;inset:0;display:none}.layer.on{display:block}
+.gold{color:#ffd63a}.cyan{color:#58e1ff}
+.t{text-shadow:0 3px 0 rgba(8,20,110,.85),0 0 8px rgba(8,20,110,.5)}
+/* 9-slice frames: the art keeps its corners while the middle stretches to any size */
+.nine{position:absolute;border-style:solid;border-image:var(--img) var(--sl) fill / var(--bw) stretch;border-width:var(--bw);pointer-events:none}
+.fit{display:flex;align-items:center;justify-content:center;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:12%;transform:translate(-50%,20px);background:rgba(10,20,90,.94);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:99;max-width:86vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+.dim{filter:grayscale(.8) brightness(.75);opacity:.8}
+.chipTxt{font-size:30px;letter-spacing:.5px}
+.entry.sel .chipTxt{color:#5a2b00;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.mc{position:relative;width:84px;height:46px;font-size:21px;opacity:.9}
+.mc.start{opacity:1;filter:hue-rotate(-150deg) saturate(1.6) brightness(1.15)}
+.mc span{font-weight:700;text-shadow:0 2px 0 rgba(20,10,90,.9),0 0 6px rgba(20,10,90,.6);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;filter:none}
+.mc.start span{filter:hue-rotate(150deg) saturate(.7) brightness(.9)}
+.tile{width:138px;height:138px;padding:0}
+.tile img.t0{position:absolute;inset:0;width:100%;height:100%}
+.tile.open{animation:flip .45s ease-out both}
+.tile.shake{animation:shake .5s both}
+.tile:active:not(:disabled) img.t0{transform:scale(.94)}
+@keyframes flip{0%{transform:scale(.7) rotateY(80deg)}60%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-10px)}40%{transform:translateX(9px)}60%{transform:translateX(-6px)}80%{transform:translateX(4px)}}
+@keyframes pop{0%{transform:scale(.5);opacity:0}60%{transform:scale(1.08);opacity:1}100%{transform:scale(1)}}
+.pop{animation:pop .45s ease-out both}
+@keyframes fxout{0%{transform:scale(.4);opacity:1}100%{transform:scale(1.5);opacity:0}}
+.fx{position:absolute;pointer-events:none;animation:fxout .7s ease-out both}
+.row{position:absolute;left:44px;width:574px;height:78px;border-radius:20px;background:rgba(10,30,130,.55);border:2px solid rgba(170,200,255,.35);display:flex;align-items:center;padding:0 22px;gap:14px;font-size:24px}
+.row b{font-size:26px}
+.badge{padding:4px 14px;border-radius:14px;font-size:20px;font-weight:700}
+.badge.w{background:#25c85a}.badge.l{background:#d8384f}
+</style>
+</head>
+<body>
+<div id="stage">
+
+ <!-- ================= LOBBY ================= -->
+ <div id="lobby" class="layer on">
+  <button id="back" class="press" style="left:29px;top:37px;width:88px"><img src="assets/bomb_04_btn_back_square.webp" alt=""></button>
+  <div class="a" style="left:235px;top:46px;width:253px;height:68px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_06_coin_pill.webp);--sl:30 90 30 90;--bw:24px 40px 24px 70px"></div>
+   <div class="a fit" id="lCoins" style="left:60px;right:10px;top:0;bottom:0;font-size:26px;font-weight:700"></div>
+  </div>
+  <button id="cfg" class="press" style="left:604px;top:37px;width:86px"><img src="assets/bomb_05_btn_settings_square.webp" alt=""></button>
+
+  <img class="a" src="assets/bomb_02_title.webp" style="left:90px;top:142px;width:540px" alt="">
+  <div class="a c cyan t" style="left:0;right:0;top:252px;font-size:28px;font-weight:700;letter-spacing:1px">CHOOSE YOUR ENTRY</div>
+
+  <!-- entry -->
+  <div class="nine" style="left:29px;top:300px;width:662px;height:225px;--img:url(assets/bomb_07_panel_glass_large.webp);--sl:80;--bw:56px"></div>
+  <div class="a t" style="left:62px;top:324px;font-size:26px;font-weight:700">CHOOSE YOUR ENTRY</div>
+  <div class="a" style="right:62px;top:326px;font-size:20px;display:flex;align-items:center;gap:8px;white-space:nowrap">BALANCE: <span class="gold" id="lBal" style="font-size:25px;font-weight:700"></span><img src="assets/bomb_10_coin_icon_small.webp" style="width:30px" alt=""></div>
+  <div id="entries"></div>
+  <div class="a c cyan" id="feeTxt" style="left:0;right:0;top:468px;font-size:23px;font-weight:700;letter-spacing:.5px"></div>
+
+  <!-- bomb count -->
+  <div class="nine" style="left:29px;top:548px;width:662px;height:318px;--img:url(assets/bomb_07_panel_glass_large.webp);--sl:80;--bw:56px"></div>
+  <div class="a t" style="left:62px;top:578px;font-size:30px;font-weight:700">CHOOSE BOMB COUNT</div>
+  <div class="a" style="left:515px;top:572px;width:146px;height:46px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_16_pill_range_label.webp);--sl:40;--bw:20px"></div>
+   <div class="a fit" style="inset:0;font-size:19px;font-weight:700">3 – 15 BOMBS</div>
+  </div>
+  <button id="minus" class="press" style="left:146px;top:640px;width:78px"><img src="assets/bomb_12_btn_minus.webp" alt=""></button>
+  <img class="a" src="assets/bomb_11_bomb_icon.webp" style="left:236px;top:640px;width:70px" alt="">
+  <div class="a gold t" id="bCount" style="left:318px;top:632px;font-size:62px;font-weight:700;line-height:80px"></div>
+  <div class="a t" style="left:378px;top:662px;font-size:26px;font-weight:700;letter-spacing:1px">BOMBS</div>
+  <button id="plus" class="press" style="left:497px;top:640px;width:78px"><img src="assets/bomb_13_btn_plus.webp" alt=""></button>
+  <div class="a" id="slWrap" style="left:59px;top:736px;width:602px;height:60px;touch-action:none">
+   <img class="a" src="assets/bomb_14_slider_track.webp" style="left:0;top:19px;width:602px;height:22px" alt="">
+   <img class="a" id="knob" src="assets/bomb_15_slider_knob.webp" style="left:0;top:2px;width:56px" alt="">
+  </div>
+  <div class="a" style="left:59px;top:786px;font-size:20px;font-weight:700">3 BOMBS</div>
+  <div class="a c" style="left:0;right:0;top:786px;font-size:20px;font-weight:700;opacity:.9">SELECT ANY COUNT</div>
+  <div class="a" style="right:59px;top:786px;font-size:20px;font-weight:700">15 BOMBS</div>
+  <div class="a c" style="left:0;right:0;top:822px;font-size:20px;opacity:.92">Choose from 3 to 15 bombs before you start the round.</div>
+
+  <!-- multipliers (information only) -->
+  <div class="nine" style="left:29px;top:890px;width:662px;height:178px;--img:url(assets/bomb_17_panel_multiplier.webp);--sl:60;--bw:44px"></div>
+  <div class="a c" style="left:0;right:0;top:900px;font-size:21px;font-weight:700;opacity:.9">COIN MULTIPLIERS</div>
+  <div id="mults"></div>
+  <div class="a c" style="left:0;right:0;top:1086px;font-size:21px;opacity:.95">Multiplier increases after each safe coin pick.</div>
+
+  <button id="hist" class="press" style="left:29px;top:1128px;width:271px;height:87px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_19_btn_history.webp);--sl:60;--bw:40px"></div>
+   <div class="a fit" style="inset:0;font-size:30px;font-weight:700;gap:10px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>HISTORY</div>
+  </button>
+  <button id="play" class="press" style="left:317px;top:1128px;width:373px;height:87px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_20_btn_play_game_green.webp);--sl:60;--bw:40px"></div>
+   <div class="a fit t" style="inset:0;font-size:34px;font-weight:700;gap:12px"><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY GAME</div>
+  </button>
+  <div class="a c" style="left:0;right:0;top:1236px;font-size:20px;line-height:1.35;opacity:.95">Tiles appear only after you press <span class="gold">PLAY GAME</span>.<br>Reveal a coin, then cash out whenever you want to keep your prize.</div>
+ </div>
+
+ <!-- ================= GAME ================= -->
+ <div id="game" class="layer">
+  <button id="gBack" class="press" style="left:29px;top:37px;width:88px"><img src="assets/bomb_04_btn_back_square.webp" alt=""></button>
+  <div class="a" style="left:203px;top:46px;width:253px;height:68px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_06_coin_pill.webp);--sl:30 90 30 90;--bw:24px 40px 24px 70px"></div>
+   <div class="a fit" id="gCoins" style="left:60px;right:10px;top:0;bottom:0;font-size:26px;font-weight:700"></div>
+  </div>
+  <div class="a" style="left:541px;top:58px;width:148px;height:48px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_21_pill_solo_round.webp);--sl:40;--bw:22px"></div>
+   <div class="a fit" style="inset:0;font-size:16px;font-weight:700">SOLO ROUND</div>
+  </div>
+  <img class="a" src="assets/bomb_03_pick.webp" style="left:150px;top:146px;width:420px" alt="">
+  <div class="a c cyan t" style="left:0;right:0;top:250px;font-size:28px;font-weight:700;letter-spacing:1px">AVOID BOMBS • COLLECT COINS</div>
+
+  <div class="nine" style="left:29px;top:292px;width:662px;height:1075px;--img:url(assets/bomb_23_board_frame.webp);--sl:100;--bw:70px"></div>
+  <div id="stats"></div>
+  <div class="a c gold" id="gMsg" style="left:60px;right:60px;top:432px;font-size:24px;line-height:1.3;height:64px"></div>
+  <div id="grid"></div>
+
+  <button id="cash" class="press" style="left:60px;top:1148px;width:600px;height:96px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_28_btn_cashout_green.webp);--sl:55 40 55 150;--bw:44px 30px 44px 95px"></div>
+   <div class="a fit t" id="cashTxt" style="left:96px;right:20px;top:0;bottom:6px;font-size:34px;font-weight:700"></div>
+  </button>
+  <div class="a c" style="left:60px;right:60px;top:1262px;font-size:22px;line-height:1.35;opacity:.95">After a safe pick, cash out to add the shown prize to your balance.<br><span class="gold">Hit a bomb and the entry fee is lost.</span></div>
+  <div class="a" id="fxLayer" style="left:0;top:0;width:720px;height:1400px;pointer-events:none"></div>
+ </div>
+
+ <!-- ================= RESULT ================= -->
+ <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
+  <div class="a" style="left:30px;top:360px;width:660px;height:632px">
+   <img id="rFrame" class="a pop" style="left:0;top:0;width:660px;height:632px" alt="">
+   <img id="rTitle" class="a pop" style="left:195px;top:216px;width:270px" alt="">
+   <div class="a c" id="rKicker" style="left:0;right:0;top:196px;font-size:22px;font-weight:700;letter-spacing:2px;opacity:.9"></div>
+   <div class="a c" id="rSub" style="left:84px;right:84px;top:326px;font-size:23px;line-height:1.25"></div>
+   <div class="a" style="left:110px;top:388px;width:440px;height:76px">
+    <div class="nine" id="rBannerNine" style="inset:0;--sl:30 60;--bw:20px 40px"></div>
+    <div class="a fit" id="rAmt" style="inset:0;font-size:40px;font-weight:700"></div>
+   </div>
+   <button id="rAgain" class="press" style="left:62px;top:486px;width:270px;height:84px">
+    <div class="nine" style="inset:0;--img:url(assets/bomb_20_btn_play_game_green.webp);--sl:60;--bw:36px"></div>
+    <div class="a fit t" style="inset:0;font-size:28px;font-weight:700;gap:8px"><svg width="20" height="22" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY AGAIN</div>
+   </button>
+   <button id="rLobby" class="press" style="left:350px;top:486px;width:250px;height:84px">
+    <div class="nine" style="inset:0;--img:url(assets/bomb_36_btn_lobby_blue.webp);--sl:36 40 36 70;--bw:34px 30px 34px 56px"></div>
+    <div class="a fit t" style="left:58px;right:6px;top:0;bottom:0;font-size:28px;font-weight:700">LOBBY</div>
+   </button>
+  </div>
+ </div>
+
+ <!-- ================= HISTORY ================= -->
+ <div id="histL" class="layer" style="background:rgba(5,15,80,.72);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px)">
+  <div class="nine" style="left:29px;top:150px;width:662px;height:1000px;--img:url(assets/bomb_23_board_frame.webp);--sl:100;--bw:70px"></div>
+  <div class="a c gold t" style="left:0;right:0;top:196px;font-size:46px;font-weight:700">BOMB HISTORY</div>
+  <div class="a c" id="hSub" style="left:0;right:0;top:256px;font-size:20px;opacity:.85">Latest 10 rounds</div>
+  <div id="hRows"></div>
+  <button id="hClose" class="press" style="left:210px;top:1040px;width:300px;height:84px">
+   <div class="nine" style="inset:0;--img:url(assets/bomb_36_btn_lobby_blue.webp);--sl:36 40 36 70;--bw:34px 30px 34px 56px"></div>
+   <div class="a fit t" style="left:58px;right:6px;top:0;bottom:0;font-size:28px;font-weight:700">CLOSE</div>
+  </button>
+ </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+/* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
+const SW = 720, SH = 1400; let SC = 1;
+const stage = $('stage');
+function fit() {
+  const w = innerWidth, h = innerHeight; SC = Math.min(w / SW, h / SH);
+  stage.style.transform = `translate(${(w - SW * SC) / 2}px,${(h - SH * SC) / 2}px) scale(${SC})`;
+}
+fit(); addEventListener('resize', fit); if (tg) tg.onEvent('viewportChanged', fit);
+
+const A = n => 'assets/bomb_' + n + '.webp';
+const show = (id, on) => $(id).classList.toggle('on', on);
+const num = n => Number(n).toLocaleString('en-US');
+const fmtM = m => (+m.toFixed(2)) + 'x';
+const ERR = { not_enough_coins: 'Not enough coins', round_active: 'Finish your current round first', not_active: 'This round is already over',
+  already_picked: 'Tile already opened', bad_request: 'Invalid choice', network_error: 'Connection problem, try again', server_error: 'Server problem, try again',
+  nothing_to_cash: 'Pick a safe tile first', unauthorized: 'Please reopen from the bot button' };
+const errMsg = e => ERR[e && e.message] || 'Something went wrong';
+
+let coins = 0, entry = 2000, bombs = 3, round = null, busy = false, lastCfg = { entry: 2000, bombs: 3 };
+
+/* ---------- lobby ---------- */
+function setCoins() { $('lCoins').textContent = num(coins) + ' COINS'; $('gCoins').textContent = num(coins) + ' COINS'; $('lBal').textContent = num(coins); }
+function buildEntries() {
+  const xs = [59, 214, 369, 520], ws = [141, 142, 137, 140];
+  $('entries').innerHTML = BOMB_ENTRIES.map((v, i) => `
+    <button class="entry press" data-v="${v}" style="left:${xs[i]}px;top:376px;width:${ws[i]}px;height:74px">
+      <div class="nine" style="inset:0;--img:url(${A('08_chip_entry_normal')});--sl:40;--bw:30px"></div>
+      <div class="nine sel-bg" style="inset:0;--img:url(${A('09_chip_entry_selected')});--sl:40;--bw:30px;display:none"></div>
+      <div class="a fit" style="inset:0;gap:6px"><span class="chipTxt">${num(v)}</span><img src="${A('10_coin_icon_small')}" style="width:30px" alt=""></div>
+    </button>`).join('');
+  $('entries').onclick = e => { const b = e.target.closest('.entry'); if (!b) return; entry = +b.dataset.v; haptic('light'); paintLobby(); };
+}
+function buildMults() {
+  const row = (items, top) => `<div class="a" style="left:0;right:0;top:${top}px;display:flex;justify-content:center;gap:9px">${items}</div>`;
+  const chip = (m, i) => `<div class="mc" data-i="${i}"><div class="nine" style="inset:0;--img:url(${A('18_chip_multiplier')});--sl:40;--bw:24px"></div><span>${m}x</span></div>`;
+  const L = BOMB_LADDER;
+  $('mults').innerHTML = row(L.slice(0, 6).map((m, i) => chip(m, i)).join(''), 940) + row(L.slice(6).map((m, i) => chip(m, i + 6)).join(''), 1000);
+}
+const KNOB = 56, TRK = 602;
+function paintLobby() {
+  document.querySelectorAll('.entry').forEach(b => {
+    const on = +b.dataset.v === entry; b.classList.toggle('sel', on);
+    b.querySelector('.sel-bg').style.display = on ? 'block' : 'none';
+  });
+  $('feeTxt').textContent = 'ENTRY FEE: ' + num(entry) + ' COINS';
+  $('bCount').textContent = bombs;
+  $('knob').style.left = ((bombs - 3) / 12 * (TRK - KNOB)) + 'px';
+  document.querySelectorAll('.mc').forEach(c => c.classList.toggle('start', +c.dataset.i === bombs - 3));
+  $('play').style.opacity = coins < entry ? .6 : 1;
+  setCoins();
+}
+function setBombs(v) { v = Math.max(3, Math.min(15, Math.round(v))); if (v !== bombs) { bombs = v; haptic('light'); } paintLobby(); }
+$('minus').onclick = () => setBombs(bombs - 1);
+$('plus').onclick = () => setBombs(bombs + 1);
+(function slider() {
+  const w = $('slWrap'); let drag = false;
+  const move = e => { const r = w.getBoundingClientRect(); const x = (e.clientX - r.left) / SC; setBombs(3 + (x - KNOB / 2) / (TRK - KNOB) * 12); };
+  w.addEventListener('pointerdown', e => { drag = true; try { w.setPointerCapture(e.pointerId); } catch (_) {} move(e); });
+  w.addEventListener('pointermove', e => { if (drag) move(e); });
+  const up = () => { drag = false; }; w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up);
+})();
+$('back').onclick = () => { location.href = 'index.html' + location.search; };
+$('gBack').onclick = () => { goLobby(); };
+$('cfg').onclick = () => toast('Settings coming soon');
+
+/* ---------- game ---------- */
+function buildGame() {
+  $('stats').innerHTML = [['ENTRY', 'sEntry', 62], ['SAFE PICKS', 'sSafe', 265], ['PRIZE NOW', 'sPrize', 468]].map(([l, id, x]) => `
+    <div class="a" style="left:${x}px;top:322px;width:190px;height:96px">
+      <div class="nine" style="inset:0;--img:url(${A('22_stat_box')});--sl:50;--bw:30px"></div>
+      <div class="a c" style="left:0;right:0;top:12px;font-size:17px;font-weight:700;opacity:.9;letter-spacing:.5px">${l}</div>
+      <div class="a c gold t" id="${id}" style="left:0;right:0;top:34px;font-size:44px;font-weight:700;line-height:54px"></div>
+    </div>`).join('');
+  let h = '';
+  for (let i = 0; i < 16; i++) {
+    const x = 62 + (i % 4) * 153, y = 511 + Math.floor(i / 4) * 152;
+    h += `<button class="tile" id="t${i}" data-i="${i}" style="left:${x}px;top:${y}px"><img class="t0" src="${A('24_tile_hidden')}" alt=""></button>`;
+  }
+  $('grid').innerHTML = h;
+  $('grid').onclick = e => { const b = e.target.closest('.tile'); if (b) pick(+b.dataset.i); };
+}
+function resetBoard() {
+  for (let i = 0; i < 16; i++) { const t = $('t' + i); t.disabled = false; t.className = 'tile'; t.querySelector('img').src = A('24_tile_hidden'); t.style.opacity = 1; }
+  $('fxLayer').innerHTML = '';
+}
+function paintRound(msg) {
+  const r = round; if (!r) return;
+  $('sEntry').textContent = num(r.entry); $('sSafe').textContent = r.safe; $('sPrize').textContent = num(r.prize);
+  $('cashTxt').textContent = r.safe ? 'CASH OUT ' + num(r.prize) + ' COINS' : 'PICK A SAFE TILE';
+  $('cash').disabled = !r.safe; $('cash').style.filter = r.safe ? '' : 'grayscale(.85) brightness(.8)';
+  $('gMsg').innerHTML = msg || (r.safe
+    ? `SAFE PICK! ${fmtM(r.mult)} multiplier • cash out or risk another tile.`
+    : `${r.bombs} bombs hidden. First safe pick pays <span class="cyan">${fmtM(r.nextMult)}</span>.`);
+  setCoins();
+}
+function openTile(i, kind) {
+  const t = $('t' + i); t.disabled = true; t.classList.add('open');
+  t.querySelector('img').src = A(kind === 'bomb' ? '26_tile_bomb' : '25_tile_coin');
+}
+function fx(i, kind) {
+  const t = $('t' + i), x = parseFloat(t.style.left) + 69, y = parseFloat(t.style.top) + 69, s = kind === 'bomb' ? 300 : 240;
+  const im = document.createElement('img'); im.className = 'fx'; im.src = A(kind === 'bomb' ? '30_fx_explosion' : '29_fx_coin_burst');
+  im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`; $('fxLayer').appendChild(im); setTimeout(() => im.remove(), 800);
+}
+function revealRest(mines) {   // end of round: show where the bombs were (dimmed), lock the board
+  for (let i = 0; i < 16; i++) {
+    const t = $('t' + i); t.disabled = true;
+    if (!t.classList.contains('open')) { if (mines.includes(i)) { t.querySelector('img').src = A('26_tile_bomb'); } t.style.opacity = .62; }
+  }
+}
+async function pick(i) {
+  if (busy || !round) return; busy = true;
+  try {
+    const r = await api.bombPick({ roundId: round.id, tile: i });
+    if (r.result === 'bomb') {
+      haptic('error'); openTile(i, 'bomb'); fx(i, 'bomb'); $('t' + i).classList.add('shake'); coins = r.coins; setCoins();
+      revealRest(r.mines); const lost = round.entry; round = null; $('cash').disabled = true;
+      setTimeout(() => showResult('lose', { lost, safe: r.safe }), 1200);
+    } else {
+      haptic('success'); openTile(i, 'coin'); fx(i, 'coin');
+      round = { ...round, safe: r.safe, mult: r.mult, prize: r.prize, nextMult: r.nextMult || r.mult, picks: [...(round.picks || []), i] };
+      if (r.result === 'cleared') { coins = r.coins; revealRest(r.mines); paintRound('ALL SAFE TILES FOUND!'); const w = { prize: r.prize, safe: r.safe, cleared: true }; round = null; setTimeout(() => showResult('win', w), 1100); }
+      else paintRound();
+    }
+  } catch (e) { toast(errMsg(e)); if (e.message === 'not_active') { round = null; goLobby(); } }
+  busy = false;
+}
+$('cash').onclick = async () => {
+  if (busy || !round || !round.safe) return; busy = true;
+  try {
+    const r = await api.bombCashout(); haptic('success'); coins = r.coins; setCoins(); revealRest(r.mines); round = null;
+    setTimeout(() => showResult('win', { prize: r.prize, safe: r.safe }), 700);
+  } catch (e) { toast(errMsg(e)); if (e.message === 'not_active') { round = null; goLobby(); } }
+  busy = false;
+};
+function enterGame(r) {
+  round = r; resetBoard(); (r.picks || []).forEach(i => { const t = $('t' + i); t.disabled = true; t.querySelector('img').src = A('25_tile_coin'); });
+  show('lobby', false); show('result', false); show('histL', false); show('game', true); paintRound();
+}
+function goLobby() { show('game', false); show('result', false); show('histL', false); show('lobby', true); paintLobby(); refresh(false); }
+
+/* ---------- start / result ---------- */
+async function startRound(cfg) {
+  if (busy) return; busy = true;
+  try {
+    const r = await api.bombStart(cfg); coins = r.coins; lastCfg = { ...cfg }; haptic('medium'); enterGame(r.round);
+  } catch (e) {
+    if (e.message === 'round_active') { toast(ERR.round_active); await refresh(true); }
+    else toast(errMsg(e));
+  }
+  busy = false;
+}
+$('play').onclick = () => startRound({ entry, bombs });
+function showResult(kind, d) {
+  const win = kind === 'win';
+  $('rFrame').src = A(win ? '31_popup_win_frame' : '32_popup_lose_frame');
+  $('rTitle').src = A(win ? '37_title_you_win' : '38_title_you_lose');
+  $('rBannerNine').style.setProperty('--img', `url(${A(win ? '33_banner_coins_gold' : '34_banner_coins_loss')})`);
+  $('rKicker').textContent = win ? 'PRIZE SECURED' : 'ROUND OVER';
+  $('rSub').textContent = win ? (d.cleared ? 'You found every safe tile!' : `You cashed out after ${d.safe} safe pick${d.safe === 1 ? '' : 's'}.`)
+                              : `Bomb hit! Your ${num(d.lost)}-coin entry fee is lost.`;
+  $('rAmt').textContent = win ? '+' + num(d.prize) + ' COINS' : '-' + num(d.lost) + ' COINS';
+  $('rAmt').style.color = win ? '#ffe36a' : '#f1d9ff'; $('rAmt').style.textShadow = win ? '0 3px 0 rgba(90,40,0,.9),0 0 10px rgba(255,200,0,.55)' : '0 2px 0 rgba(30,10,70,.8)';
+  ['rFrame', 'rTitle'].forEach(id => { const el = $(id); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
+  show('result', true); haptic(win ? 'success' : 'error');
+}
+$('rAgain').onclick = () => { show('result', false); startRound(lastCfg); };
+$('rLobby').onclick = () => goLobby();
+
+/* ---------- history ---------- */
+$('hist').onclick = async () => {
+  show('histL', true); $('hRows').innerHTML = ''; $('hSub').textContent = 'Loading…';
+  try {
+    const h = await api.bombHistory(); $('hSub').textContent = h.items.length ? 'Latest 10 rounds' : 'No rounds yet — go play!';
+    $('hRows').innerHTML = h.items.slice(0, 10).map((r, i) => `
+      <div class="row" style="top:${296 + i * 74}px;height:66px;left:62px;width:596px">
+        <span class="badge ${r.result === 'win' ? 'w' : 'l'}">${r.result === 'win' ? 'WIN' : 'LOSE'}</span>
+        <span style="flex:1;font-size:21px;line-height:1.15">Entry <b class="gold" style="font-size:22px">${num(r.entry)}</b><br><span style="opacity:.8;font-size:18px">${r.bombs} bombs · ${r.safe} safe pick${r.safe === 1 ? '' : 's'}</span></span>
+        <b style="color:${r.result === 'win' ? '#7dff9c' : '#ff9fb0'}">${r.result === 'win' ? '+' + num(r.prize) : '-' + num(r.entry)}</b>
+      </div>`).join('');
+  } catch (e) { $('hSub').textContent = errMsg(e); }
+};
+$('hClose').onclick = () => show('histL', false);
+
+/* ---------- boot ---------- */
+async function refresh(resume) {   // resume=true: if an unfinished round exists, jump back into it
+  try {
+    const s = await api.bombState(); coins = s.coins; paintLobby();
+    if (resume && s.round) enterGame(s.round);
+  } catch (e) { toast(errMsg(e)); }
+}
+buildEntries(); buildMults(); buildGame(); paintLobby();
+refresh(true);
+</script>
+</body>
+</html>

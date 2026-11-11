@@ -137,6 +137,7 @@ document.addEventListener('click', e => {
   haptic('light');
   if (b.dataset.go === 'home') return;
   if (b.dataset.go === 'flydodge') { location.href = 'duel.html' + location.search; return; }
+  if (b.dataset.go === 'bomb') { location.href = 'bombs.html' + location.search; return; }
   toast(b.dataset.go + ' - coming soon');
 });
 </script>
