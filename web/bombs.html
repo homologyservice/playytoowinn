@@ -148,7 +148,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
    <div class="nine" style="inset:0;--img:url(assets/bomb_28_btn_cashout_green.webp);--sl:55 40 55 150;--bw:44px 30px 44px 95px"></div>
    <div class="a fit t" id="cashTxt" style="left:96px;right:20px;top:0;bottom:6px;font-size:34px;font-weight:700"></div>
   </button>
-  <div class="a c" style="left:60px;right:60px;top:1262px;font-size:22px;line-height:1.35;opacity:.95">After a safe pick, cash out to add the shown prize to your balance.<br><span class="gold">Hit a bomb and the entry fee is lost.</span></div>
+  <div class="a c" style="left:60px;right:60px;top:1262px;font-size:22px;line-height:1.35;opacity:.95">Cash out adds the full amount shown (entry × multiplier) to your balance.<br><span class="gold">Hit a bomb and the entry fee is lost.</span></div>
   <div class="a" id="fxLayer" style="left:0;top:0;width:720px;height:1400px;pointer-events:none"></div>
  </div>
 
@@ -254,7 +254,7 @@ $('cfg').onclick = () => toast('Settings coming soon');
 
 /* ---------- game ---------- */
 function buildGame() {
-  $('stats').innerHTML = [['ENTRY', 'sEntry', 62], ['SAFE PICKS', 'sSafe', 265], ['PRIZE NOW', 'sPrize', 468]].map(([l, id, x]) => `
+  $('stats').innerHTML = [['ENTRY', 'sEntry', 62], ['SAFE PICKS', 'sSafe', 265], ['CASH OUT', 'sPrize', 468]].map(([l, id, x]) => `
     <div class="a" style="left:${x}px;top:322px;width:190px;height:96px">
       <div class="glass stat" style="inset:0"></div>
       <div class="a c" style="left:0;right:0;top:12px;font-size:17px;font-weight:700;opacity:.9;letter-spacing:.5px">${l}</div>
@@ -278,7 +278,7 @@ function paintRound(msg) {
   $('cashTxt').textContent = r.safe ? 'CASH OUT ' + num(r.prize) + ' COINS' : 'PICK A SAFE TILE';
   $('cash').disabled = !r.safe; $('cash').style.filter = r.safe ? '' : 'grayscale(.85) brightness(.8)';
   $('gMsg').innerHTML = msg || (r.safe
-    ? `SAFE PICK! ${fmtM(r.mult)} multiplier • cash out or risk another tile.`
+    ? `SAFE PICK! ${fmtM(r.mult)} • cash out <span class="cyan">${num(r.prize)}</span> (profit <span class="cyan">+${num(r.prize - r.entry)}</span>) or risk another tile.`
     : `${r.bombs} bombs hidden. First safe pick pays <span class="cyan">${fmtM(r.nextMult)}</span>.`);
   setCoins();
 }
@@ -308,7 +308,7 @@ async function pick(i) {
     } else {
       haptic('success'); openTile(i, 'coin'); fx(i, 'coin');
       round = { ...round, safe: r.safe, mult: r.mult, prize: r.prize, nextMult: r.nextMult || r.mult, picks: [...(round.picks || []), i] };
-      if (r.result === 'cleared') { coins = r.coins; revealRest(r.mines); paintRound('ALL SAFE TILES FOUND!'); const w = { prize: r.prize, safe: r.safe, cleared: true }; round = null; setTimeout(() => showResult('win', w), 1100); }
+      if (r.result === 'cleared') { coins = r.coins; revealRest(r.mines); paintRound('ALL SAFE TILES FOUND!'); const w = { prize: r.prize, net: r.net, entry: r.entry, safe: r.safe, cleared: true }; round = null; setTimeout(() => showResult('win', w), 1100); }
       else paintRound();
     }
   } catch (e) { toast(errMsg(e)); if (e.message === 'not_active') { round = null; goLobby(); } }
@@ -318,7 +318,7 @@ $('cash').onclick = async () => {
   if (busy || !round || !round.safe) return; busy = true;
   try {
     const r = await api.bombCashout(); haptic('success'); coins = r.coins; setCoins(); revealRest(r.mines); round = null;
-    setTimeout(() => showResult('win', { prize: r.prize, safe: r.safe }), 700);
+    setTimeout(() => showResult('win', { prize: r.prize, net: r.net, entry: r.entry, safe: r.safe }), 700);
   } catch (e) { toast(errMsg(e)); if (e.message === 'not_active') { round = null; goLobby(); } }
   busy = false;
 };
@@ -342,6 +342,7 @@ async function startRound(cfg) {
 $('play').onclick = () => startRound({ entry, bombs });
 function showResult(kind, d) {
   const win = kind === 'win';
+  d.net = d.net != null ? d.net : (win ? d.prize - (d.entry || 0) : -d.lost);
   $('rFrame').src = A(win ? '31_popup_win_frame' : '32_popup_lose_frame');
   $('rTitle').src = A(win ? '37_title_you_win' : '38_title_you_lose');
   const bn = $('rBanner');
@@ -349,8 +350,8 @@ function showResult(kind, d) {
   bn.style.border = win ? '3px solid #fff0b0' : '2.5px solid rgba(215,200,245,.8)';
   bn.style.boxShadow = win ? 'inset 0 3px 6px rgba(255,255,255,.55),0 0 18px rgba(255,190,50,.5)' : 'inset 0 2px 6px rgba(255,255,255,.25)';
   const fr = $('rFrame'); fr.style.width = win ? '706px' : '736px'; fr.style.left = win ? '0px' : '4px'; fr.style.top = win ? '344px' : '350px';
-  $('rKicker').textContent = win ? 'PRIZE SECURED' : 'ROUND OVER';
-  $('rSub').textContent = win ? (d.cleared ? 'You found every safe tile!' : `You cashed out after ${d.safe} safe pick${d.safe === 1 ? '' : 's'}.`)
+  $('rKicker').textContent = (win ? 'NEW BALANCE ' : 'BALANCE ') + num(coins);
+  $('rSub').textContent = win ? (d.cleared ? 'All safe tiles found! ' : `${d.safe} safe pick${d.safe === 1 ? '' : 's'} · `) + 'profit +' + num(d.net)
                               : `Bomb hit! Your ${num(d.lost)}-coin entry fee is lost.`;
   bn.textContent = win ? '+' + num(d.prize) + ' COINS' : '-' + num(d.lost) + ' COINS';
   bn.style.color = win ? '#5a2f00' : '#f6e8ff'; bn.style.textShadow = win ? '0 2px 0 rgba(255,255,255,.55)' : '0 2px 0 rgba(30,10,70,.8)';
@@ -369,7 +370,7 @@ $('hist').onclick = async () => {
       <div class="row" style="top:${296 + i * 74}px;height:66px;left:62px;width:596px">
         <span class="badge ${r.result === 'win' ? 'w' : 'l'}">${r.result === 'win' ? 'WIN' : 'LOSE'}</span>
         <span style="flex:1;font-size:21px;line-height:1.15">Entry <b class="gold" style="font-size:22px">${num(r.entry)}</b><br><span style="opacity:.8;font-size:18px">${r.bombs} bombs · ${r.safe} safe pick${r.safe === 1 ? '' : 's'}</span></span>
-        <b style="color:${r.result === 'win' ? '#7dff9c' : '#ff9fb0'}">${r.result === 'win' ? '+' + num(r.prize) : '-' + num(r.entry)}</b>
+        <b style="color:${r.result === 'win' ? '#7dff9c' : '#ff9fb0'}">${r.result === 'win' ? '+' + num(r.net != null ? r.net : r.prize - r.entry) : '-' + num(r.entry)}</b>
       </div>`).join('');
   } catch (e) { $('hSub').textContent = errMsg(e); }
 };
@@ -378,7 +379,9 @@ $('hClose').onclick = () => show('histL', false);
 /* ---------- boot ---------- */
 async function refresh(resume) {   // resume=true: if an unfinished round exists, jump back into it
   try {
-    const s = await api.bombState(); coins = s.coins; paintLobby();
+    const s = await api.bombState(); coins = s.coins;
+    if (Array.isArray(s.ladder) && s.ladder.length === BOMB_LADDER.length && s.ladder.some((v, i) => v !== BOMB_LADDER[i])) { BOMB_LADDER.splice(0, BOMB_LADDER.length, ...s.ladder); buildMults(); }
+    paintLobby();
     if (resume && s.round) enterGame(s.round);
   } catch (e) { toast(errMsg(e)); }
 }
