@@ -109,10 +109,16 @@ const api = LIVE ? {
   claim: id => call('/api/duel/claim', { matchId: id }),
 } : Mock;
 
-/* Small badge so it is obvious when the pages are NOT connected to the server */
+/* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */
+const DEMO_WHY = LIVE ? '' :
+  Q.get('demo') ? 'demo=1 in the URL' :
+  !API_URL ? 'config.js has no server URL' :
+  API_URL.includes('YOUR-SERVER') ? 'config.js still says YOUR-SERVER: put your Render URL in web/config.js' :
+  !tg ? 'Telegram script not loaded' :
+  !tg.initData ? 'not opened from the bot button (no Telegram login data)' : 'unknown';
 if (!LIVE) addEventListener('DOMContentLoaded', () => {
   const d = document.createElement('div');
-  d.textContent = 'DEMO MODE - not connected to server';
-  d.style.cssText = 'position:fixed;left:50%;top:4px;transform:translateX(-50%);z-index:999;background:rgba(255,80,80,.85);color:#fff;font:700 11px sans-serif;padding:2px 10px;border-radius:10px;pointer-events:none';
+  d.textContent = 'DEMO MODE: ' + DEMO_WHY;
+  d.style.cssText = 'position:fixed;left:6px;right:6px;top:3px;z-index:999;background:rgba(255,70,70,.9);color:#fff;font:700 11px/1.25 sans-serif;padding:3px 8px;border-radius:10px;pointer-events:none;text-align:center';
   document.body.appendChild(d);
 });

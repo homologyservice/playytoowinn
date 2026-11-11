@@ -411,17 +411,24 @@ $('rvYes').onclick=async()=>{
   $('rvYes').disabled=false; show('rvDlg',false); startRevive();
 };
 function startRevive(){
-  // drop pipes already passed, move the course so the next pipe is ahead of the rocket, rocket sits in its gap
-  wd.pipes=wd.pipes.filter(p=>!p.passed);
-  let nx=wd.pipes[0]; if(!nx){ spawnPipes(); nx=wd.pipes[0]; }
-  const dx=(wd.rx+440)-nx.x; wd.pipes.forEach(p=>p.x+=dx); wd.nextX+=dx;
+  // Resume exactly where you died: the pipe you crashed into becomes the next pipe,
+  // 300 units ahead; pipes you already passed stay behind you; the rocket sits in that pipe's gap.
+  let nx=wd.pipes.find(p=>!p.passed);
+  if(!nx){ spawnPipes(); nx=wd.pipes.find(p=>!p.passed); }
+  const dx=(wd.rx+300)-nx.x;
+  const keep=[];
+  for(const p of wd.pipes){
+    if(p.passed){ p.x+=0; if(p.x+PW<wd.rx-RR-6) keep.push(p); }      // passed pipes stay where they are (behind)
+    else { p.x+=dx; keep.push(p); }                                   // pipes ahead move back so there is room
+  }
+  wd.pipes=keep; wd.nextX+=dx;
   wd.hoverY=nx.gy; wd.ry=nx.gy; wd.vy=0; wd.dead=false; wd.deadT=0; wd.t=0;
   state='revive'; haptic('medium');
   let n=3; $('rvNum').textContent=n; $('rvCount').style.display='block';
   const iv=setInterval(()=>{
     if(state!=='revive'){ clearInterval(iv); $('rvCount').style.display='none'; return; }
     if($('exitDlg').classList.contains('on')) return;
-    n--; if(n<=0){ clearInterval(iv); $('rvCount').style.display='none'; state='run'; wd.vy=FLAP; haptic('light'); return; }
+    n--; if(n<=0){ clearInterval(iv); $('rvCount').style.display='none'; state='run'; wd.vy=FLAP*0.5; haptic('light'); return; }
     $('rvNum').textContent=n; haptic('light');
   },1000);
 }
