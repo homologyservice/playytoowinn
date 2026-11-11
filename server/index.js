@@ -15,7 +15,7 @@ const FEE = 500;                 // entry fee (virtual coins)
 const PRIZE = 900;               // winner prize
 const CLAIM_MS = 10 * 60 * 1000; // prize can be claimed 10 min after the match is decided
 const STALE_MS = 15 * 60 * 1000; // a run that never reports back is treated as forfeited
-const START_COINS = 2500, START_HEARTS = 10;
+const START_COINS = 2500, START_HEARTS = 2;   // new users only
 
 // ---------- Database ----------
 const User = mongoose.model('User', new mongoose.Schema({
@@ -34,6 +34,7 @@ const side = () => ({
   result: String,                       // win | loss | draw
   prize: { type: Number, default: 0 },
   claimed: { type: Boolean, default: false },
+  revives: { type: Number, default: 0 },   // hearts used to continue after a crash
 });
 const Match = mongoose.model('Match', new mongoose.Schema({
   status: { type: String, default: 'open', index: true },   // open | complete | dead
@@ -158,14 +159,29 @@ app.post('/api/duel/start', auth, async (req, res) => {
       );
       if (joined) {
         return res.json({ matchId: String(joined._id), seed: String(joined._id), role: 'b',
-                          opponent: { name: joined.a.name, score: joined.a.score }, coins: paid.coins });
+                          opponent: { name: joined.a.name, score: joined.a.score }, coins: paid.coins, hearts: paid.hearts });
       }
       const m = await Match.create({ a: { user: uid, name: user.name, status: 'playing', startedAt: now } });
-      res.json({ matchId: String(m._id), seed: String(m._id), role: 'a', opponent: null, coins: paid.coins });
+      res.json({ matchId: String(m._id), seed: String(m._id), role: 'a', opponent: null, coins: paid.coins, hearts: paid.hearts });
     } catch (e) {
       await User.updateOne({ tgId: uid }, { $inc: { coins: FEE } });   // refund if matching failed
       throw e;
     }
+  } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
+});
+
+// Spend 1 heart to continue a run after crashing (score is kept, the client restarts from the next gap).
+app.post('/api/duel/revive', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    if (!mongoose.isValidObjectId(req.body.matchId)) return res.status(400).json({ error: 'bad_match' });
+    const m = await Match.findById(req.body.matchId);
+    const role = m && m.status === 'open' ? ((m.a.user === uid && m.a.status === 'playing') ? 'a' : (m.b.user === uid && m.b.status === 'playing') ? 'b' : null) : null;
+    if (!role) return res.status(409).json({ error: 'not_active' });
+    const u = await User.findOneAndUpdate({ tgId: uid, hearts: { $gte: 1 } }, { $inc: { hearts: -1 } }, { new: true });
+    if (!u) return res.status(402).json({ error: 'no_hearts' });
+    await Match.updateOne({ _id: m._id }, { $inc: { [`${role}.revives`]: 1 } });
+    res.json({ hearts: u.hearts });
   } catch (e) { console.error(e); res.status(500).json({ error: 'server_error' }); }
 });
 
