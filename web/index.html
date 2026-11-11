@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="config.js"></script>
+<script src="common.js"></script>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:#4a46b8 url(assets/27_menu_background_tile.webp) center/cover no-repeat;
@@ -107,14 +108,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  <button class="nb press" data-go="invites" style="left:431px;width:143px"><img src="assets/25_invites_icon.webp" alt=""><span>Invites</span></button>
  <button class="nb press" data-go="profile" style="left:574px;width:142px"><img src="assets/26_profile_icon.webp" alt=""><span>Profile</span></button>
 </div>
-<div id="toast"></div>
 
 <script>
-const tg = window.Telegram && Telegram.WebApp;
-if (tg) { tg.ready(); tg.expand(); try{tg.setHeaderColor('#4a46b8');tg.setBackgroundColor('#4a46b8');}catch(e){} }
-const API = window.P2W_API || "";
-const $ = id => document.getElementById(id);
-const fmt = n => n >= 1000 ? (n/1000).toFixed(n%1000?1:0).replace(/\.0$/,'') + 'K' : String(n);
+const fmtK = n => n >= 1000 ? (n/1000).toFixed(n%1000?1:0).replace(/\.0$/,'') + 'K' : String(n);
 
 // Scale the 720px design to fit the screen so nothing needs scrolling
 function layout(){
@@ -128,26 +124,19 @@ function layout(){
 layout(); addEventListener('resize', layout);
 if (tg) tg.onEvent('viewportChanged', layout);
 
-function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('show'),1500)}
-function render(u){ $('uname').textContent = u.name; $('coins').textContent = fmt(u.coins); $('hearts').textContent = u.hearts; }
+function render(u){ $('uname').textContent = u.name; $('coins').textContent = fmtK(u.coins); $('hearts').textContent = u.hearts; }
 
 async function load(){
-  let u = { name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Player', coins: 2500, hearts: 10 };
-  render(u);
-  if (API && !API.includes('YOUR-SERVER') && tg && tg.initData) {
-    try {
-      const r = await fetch(API + '/api/auth', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({initData:tg.initData})});
-      if (r.ok) render(await r.json());
-    } catch(e) {}
-  }
+  render({ name: (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Player', coins: 0, hearts: 0 });
+  try { render(await api.me()); } catch(e) {}
 }
 load();
 
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-go]'); if(!b) return;
-  if (tg && tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+  haptic('light');
   if (b.dataset.go === 'home') return;
-  if (b.dataset.go === 'flydodge') { location.href = 'duel.html'; return; }
+  if (b.dataset.go === 'flydodge') { location.href = 'duel.html' + location.search; return; }
   toast(b.dataset.go + ' - coming soon');
 });
 </script>

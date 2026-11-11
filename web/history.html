@@ -23,7 +23,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .stretch{background-size:100% 100%;background-repeat:no-repeat}
 .tab{position:absolute;top:238px;height:76px;font-size:34px;font-weight:700;color:#fff}
 .tab.off{color:#9aa4ff}
-#list{position:absolute;left:30px;top:344px;width:660px;height:818px;overflow-y:auto;overflow-x:hidden;padding:4px 0}
+#list{position:absolute;left:76px;top:452px;width:572px;height:672px;overflow-y:auto;overflow-x:hidden}
+#listIn{width:660px;zoom:.866}
 #list::-webkit-scrollbar{display:none}
 .row{position:relative;width:660px;height:108px;margin-bottom:12px;flex:none}
 .row .bg{position:absolute;inset:0;background-size:100% 100%}
@@ -53,8 +54,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  <button class="tab stretch press t off" data-f="loss" style="left:482px;width:208px;background-image:url(assets/69_tab_inactive.webp)">LOSSES</button>
 
  <div class="a stretch" style="left:14px;top:330px;width:692px;height:850px;background-image:url(assets/70_list_container.webp)"></div>
- <div id="list"></div>
- <div id="empty" class="a c" style="left:100px;width:520px;top:520px">
+ <div id="list"><div id="listIn"></div></div>
+ <div id="empty" class="a c" style="left:100px;width:520px;top:560px">
   <img style="width:260px;margin:0 auto 10px" src="assets/80_empty_state.webp" alt="">
   <div class="t" style="font-size:34px;font-weight:700">No matches yet</div>
   <div style="font-size:24px;opacity:.85;margin-top:6px">Play Fly & Dodge to see your history</div>
@@ -81,7 +82,7 @@ document.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{
 });
 
 function render(){
-  const list=$('list'); list.innerHTML='';
+  const list=$('listIn'); list.innerHTML='';
   const f=items.filter(i=>filter==='all'||(filter==='win'&&(i.result==='win'||i.result==='draw'))||(filter==='loss'&&i.result==='loss'));
   $('empty').style.display=f.length?'none':'block';
   f.forEach(i=>{

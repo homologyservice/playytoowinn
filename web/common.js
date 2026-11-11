@@ -43,10 +43,10 @@ async function call(path, body) {
 
 /* Demo mode: everything runs in this browser (localStorage). Used before the server is connected. */
 const Mock = (() => {
-  const K = 'p2w_demo_v1';
+  const K = 'p2w_demo_v2';
   const load = () => { try { return JSON.parse(localStorage.getItem(K)) || null; } catch (e) { return null; } };
   const save = s => { try { localStorage.setItem(K, JSON.stringify(s)); } catch (e) {} };
-  let s = load() || { coins: 2500, hearts: 10, matches: [], active: null };
+  let s = load() || { coins: 2500, hearts: 2, matches: [], active: null };
   const name = () => (tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.first_name) || 'Player';
   const rid = () => Math.random().toString(36).slice(2, 10);
   const oppName = () => 'Player ' + (1000 + Math.floor(Math.random() * 9000));
@@ -69,7 +69,7 @@ const Mock = (() => {
       const has = Math.random() < 0.6;
       const opp = has ? { name: oppName(), score: 6 + Math.floor(Math.random() * 30) } : null;
       s.active = { id: rid(), opp, at: Date.now() }; save(s);
-      return { matchId: s.active.id, seed: s.active.id, role: has ? 'b' : 'a', opponent: opp, coins: s.coins };
+      return { matchId: s.active.id, seed: s.active.id, role: has ? 'b' : 'a', opponent: opp, coins: s.coins, hearts: s.hearts };
     },
     async finish({ matchId, score, forfeit }) {
       const a = s.active; if (!a || a.id !== matchId) throw new Error('not_active');
@@ -85,6 +85,11 @@ const Mock = (() => {
       save(s);
       return { result: r, myScore: score, oppScore: a.opp.score, prize, claimAt, coins: s.coins };
     },
+    async revive(matchId) {
+      if (!s.active || s.active.id !== matchId) throw new Error('not_active');
+      if (s.hearts < 1) throw new Error('no_hearts');
+      s.hearts -= 1; save(s); return { hearts: s.hearts };
+    },
     async history() { settle(); return { items: s.matches.slice(0, 50), coins: s.coins }; },
     async claim(id) {
       const m = s.matches.find(x => x.id === id);
@@ -99,6 +104,15 @@ const api = LIVE ? {
   me: () => call('/api/auth', { initData: tg.initData }),
   start: () => call('/api/duel/start', {}),
   finish: b => call('/api/duel/finish', b),
+  revive: id => call('/api/duel/revive', { matchId: id }),
   history: () => call('/api/duel/history'),
   claim: id => call('/api/duel/claim', { matchId: id }),
 } : Mock;
+
+/* Small badge so it is obvious when the pages are NOT connected to the server */
+if (!LIVE) addEventListener('DOMContentLoaded', () => {
+  const d = document.createElement('div');
+  d.textContent = 'DEMO MODE - not connected to server';
+  d.style.cssText = 'position:fixed;left:50%;top:4px;transform:translateX(-50%);z-index:999;background:rgba(255,80,80,.85);color:#fff;font:700 11px sans-serif;padding:2px 10px;border-radius:10px;pointer-events:none';
+  document.body.appendChild(d);
+});
