@@ -664,6 +664,74 @@ app.get('/api/lucky/history', auth, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+// =====================================================================
+//  SLOT MACHINE (solo, virtual coins only). Rules live in server/slots_math.js.
+//  The server draws 3 random stops, pays the win, and sends the stops back. The page only animates them.
+// =====================================================================
+const SlotMath = require('./slots_math');
+const SLOT_BET_PRESETS = [50, 100, 200, 500, 600];
+const SLOT_BET_MIN = 10, SLOT_BET_MAX = 5000;   // custom bets allowed in this range (whole numbers)
+
+const slotSchema = new mongoose.Schema({
+  tgId: { type: Number, required: true },
+  bet: Number,
+  stops: [Number],                              // the 3 reel stops that were drawn
+  mult: { type: Number, default: 0 },
+  win: { type: Number, default: 0 },            // total returned (0 = no win)
+  unpaid: { type: Boolean, default: false },    // true only between "spin resolved" and "coins credited" (crash safety)
+  createdAt: { type: Date, default: Date.now },
+});
+slotSchema.index({ tgId: 1, createdAt: -1 });
+const SlotSpin = mongoose.model('SlotSpin', slotSchema);
+
+async function slotPay(spinId, uid, win) {   // safe to call again: credits exactly once
+  const g = await SlotSpin.updateOne({ _id: spinId, unpaid: true }, { $set: { unpaid: false } });
+  if (!g.modifiedCount) return;
+  try { await User.updateOne({ tgId: uid }, { $inc: { coins: win } }); }
+  catch (e) { await SlotSpin.updateOne({ _id: spinId }, { $set: { unpaid: true } }); throw e; }
+}
+async function slotPayPending(uid) {
+  const rows = await SlotSpin.find({ tgId: uid, unpaid: true });
+  for (const r of rows) await slotPay(r._id, uid, r.win);
+}
+const slotBetOk = (bet) => Number.isInteger(bet) && bet >= SLOT_BET_MIN && bet <= SLOT_BET_MAX;
+
+app.get('/api/slots/state', auth, async (req, res) => {
+  try {
+    await upsertUser(req.tg);
+    await slotPayPending(req.tg.id);
+    const u = await User.findOne({ tgId: req.tg.id });
+    res.json({ coins: u.coins, presets: SLOT_BET_PRESETS, min: SLOT_BET_MIN, max: SLOT_BET_MAX,
+      strips: SlotMath.STRIPS, paytable: SlotMath.PAYTABLE });
+  } catch (e) { fail(res, e); }
+});
+
+app.post('/api/slots/spin', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, bet = Number(req.body && req.body.bet);
+    if (!slotBetOk(bet)) return res.status(400).json({ error: 'bad_request' });
+    await withLock('s' + uid, async () => {
+      await upsertUser(req.tg);
+      await slotPayPending(uid);
+      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
+      if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      const stops = [0, 1, 2].map(() => crypto.randomInt(SlotMath.STRIP_LEN));
+      const { mult, sym } = SlotMath.evaluate(stops);
+      const win = bet * mult;
+      let row;
+      try { row = await SlotSpin.create({ tgId: uid, bet, stops, mult, win, unpaid: win > 0 }); }
+      catch (e) { await User.updateOne({ tgId: uid }, { $inc: { coins: bet } }); throw e; }   // never keep the bet if the spin could not be saved
+      if (win > 0) {
+        try { await slotPay(row._id, uid, win); }
+        catch (e) { console.error('slot payout pending, will retry', e); }
+      }
+      const u = await User.findOne({ tgId: uid });
+      res.json({ coins: u.coins, bet, stops, reels: stops.map((s, r) => SlotMath.visible(r, s)),
+        line: SlotMath.payline(stops), sym, mult, win, net: win - bet });
+    });
+  } catch (e) { fail(res, e); }
+});
+
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
