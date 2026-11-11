@@ -58,3 +58,10 @@ For Telegram to open local pages you need an https tunnel (e.g. ngrok) as `WEBAP
 ## Notes
 - Render free plan sleeps after ~15 min idle; the first request after that is slow.
 - Never commit `.env` or the bot token.
+
+## Fly & Dodge Async Duel
+- `web/duel.html` lobby + game + result, `web/history.html` tournament history.
+- Rules: entry fee 500 coins; winner prize 900 (claim 10 min after the match is decided); draw returns 500; leaving a match = loss.
+- A match has exactly two players. Player A plays first and the score is saved; the next different player is matched to it and plays against that score. After that the match is closed and never reused.
+- While `web/config.js` still contains `YOUR-SERVER`, or when opened outside Telegram, the pages run in **demo mode** (coins/history kept in the browser only). Add `?fast=1` to the URL to make the claim timer 10 seconds for testing.
+- Server checks scores against elapsed time (basic anti-cheat). Full replay verification is not implemented yet.
