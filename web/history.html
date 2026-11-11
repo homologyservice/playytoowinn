@@ -47,7 +47,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <div id="stage">
  <button id="back" class="a press" style="left:26px;top:26px;width:92px"><img src="assets/34_back_button.webp" alt=""></button>
  <img class="a" style="left:150px;top:30px;width:430px" src="assets/67_tournament_history_title.webp" alt="Tournament History">
- <div class="a" style="right:26px;top:140px;width:190px;height:58px;display:none"></div>
+ <div id="wcount" class="a c t" style="left:110px;width:500px;top:182px;font-size:25px;line-height:40px;display:none"></div>
 
  <button class="tab stretch press t" data-f="all" style="left:30px;width:208px;background-image:url(assets/68_tab_active.webp)">ALL</button>
  <button class="tab stretch press t off" data-f="win" style="left:256px;width:208px;background-image:url(assets/69_tab_inactive.webp)">WINS</button>
@@ -71,6 +71,11 @@ const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','De
 function dstr(ts){const d=new Date(ts);let h=d.getHours(),m=d.getMinutes(),ap=h>=12?'PM':'AM';h=h%12||12;return `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}<br>${h}:${String(m).padStart(2,'0')} ${ap}`}
 const mmss=ms=>{const s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
 let items=[], filter='all', coins=0;
+const esc=v=>String(v==null?'':v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));   // player names come from Telegram: never put them in HTML raw
+function setSlots(u){
+  if(!u||u.limit==null) return; const w=$('wcount'); w.style.display='block';
+  w.innerHTML=(u.blocked?(u.reason==='claim_first'?'<span class="gold">Claim a prize to play again</span>':'<span class="gold">Waiting limit reached</span>'):'Waiting')+' · '+u.waiting+'/'+u.limit+(u.unclaimed?' · To claim: '+u.unclaimed:'');
+}
 
 $('back').onclick=()=>{ location.href=(document.referrer&&document.referrer.includes('duel'))?'duel.html'+location.search:'duel.html'+location.search; };
 if(tg&&tg.BackButton){ tg.BackButton.show(); tg.BackButton.onClick(()=>{ location.href='duel.html'+location.search; }); }
@@ -88,15 +93,15 @@ function render(){
   f.forEach(i=>{
     const win=i.result==='win', loss=i.result==='loss', draw=i.result==='draw', pend=i.result==='pending';
     const r=document.createElement('div'); r.className='row'; r.dataset.id=i.id;
-    const opp=i.opponent||'Waiting…';
+    const opp=esc(i.opponent||'Waiting…');
     const av=i.opponent?AV[hash(i.opponent)%AV.length]:'40_waiting_avatar_question';
     const score=pend?`${i.myScore} - ?`:`${i.myScore} - ${i.oppScore}`;
     const badge=pend?'':`<img class="bd" src="assets/${loss?'74_badge_loss':'73_badge_win'}.webp" alt=""><div class="bdt t">${win?'WIN':loss?'LOSS':'DRAW'}</div>`;
     const pend2=pend?`<div class="bdt" style="color:#ffd63a">WAITING</div>`:'';
-    const prize=(win||draw)?`<div class="pz"><img src="assets/04_gold_coins.webp" alt="">${i.prize} COINS</div>`:`<div class="pz no"><img src="assets/78_silver_coins.webp" alt="">${pend?'PENDING':'NO PRIZE'}</div>`;
+    const prize=(win||draw)?`<div class="pz"><img src="assets/04_gold_coins.webp" alt="">${esc(i.prize)} COINS</div>`:`<div class="pz no"><img src="assets/78_silver_coins.webp" alt="">${pend?'PENDING':'NO PRIZE'}</div>`;
     r.innerHTML=`<div class="bg" style="background-image:url(assets/${loss||pend?'72_row_card_loss':'71_row_card_win'}.webp)"></div>
       <img class="av" src="assets/${av}.webp" alt=""><div class="nm t">${opp}</div><div class="dt">${dstr(i.at)}</div>
-      <div class="sc t">${score}</div>${badge}${pend2}${prize}<div class="bt"></div>`;
+      <div class="sc t">${esc(score)}</div>${badge}${pend2}${prize}<div class="bt"></div>`;
     list.appendChild(r);
   });
   tick();
@@ -121,12 +126,12 @@ setInterval(tick,1000);
 let claiming=false;
 async function doClaim(i){
   if(claiming) return; claiming=true;
-  try{ const r=await api.claim(i.id); i.claimed=true; coins=r.coins; $('coins').textContent=fmt(coins); toast('+'+i.prize+' coins added!'); haptic('success'); }
-  catch(e){ toast(e.message==='too_early'?'Not ready yet':'Could not claim'); }
+  try{ const r=await api.claim(i.id); i.claimed=true; coins=r.coins; $('coins').textContent=fmt(coins); setSlots(r); toast('+'+i.prize+' coins added!'); haptic('success'); }
+  catch(e){ toast(e.message==='too_early'?'Not ready yet':e.message==='already_claimed'?'Already claimed':'Could not claim'); if(e.message==='already_claimed') i.claimed=true; }
   claiming=false; tick();
 }
 (async()=>{
-  try{ const h=await api.history(); items=h.items; coins=h.coins; $('coins').textContent=fmt(coins); }catch(e){ toast('Could not load history'); }
+  try{ const h=await api.history(); items=h.items; coins=h.coins; $('coins').textContent=fmt(coins); setSlots(h); }catch(e){ toast('Could not load history'); }
   render();
 })();
 </script>

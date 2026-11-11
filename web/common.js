@@ -41,9 +41,11 @@ async function call(path, body) {
   return j;
 }
 
-/* Demo mode: everything runs in this browser (localStorage). Used before the server is connected. */
+/* Demo mode: everything runs in this browser (localStorage). Used before the server is connected.
+   It follows the same rules as the server: max 5 open slots, max 10 history rows. */
+const WAIT_MAX = 5, HISTORY_MAX = 10;
 const Mock = (() => {
-  const K = 'p2w_demo_v2';
+  const K = 'p2w_demo_v3';
   const load = () => { try { return JSON.parse(localStorage.getItem(K)) || null; } catch (e) { return null; } };
   const save = s => { try { localStorage.setItem(K, JSON.stringify(s)); } catch (e) {} };
   let s = load() || { coins: 2500, hearts: 2, matches: [], active: null };
@@ -56,17 +58,36 @@ const Mock = (() => {
       if (m.result === 'pending' && now - m.at > 20000) {
         m.oppScore = Math.max(0, m.myScore + Math.floor(Math.random() * 20) - 10);
         m.opponent = oppName(); m.result = m.myScore > m.oppScore ? 'win' : m.myScore < m.oppScore ? 'loss' : 'draw';
-        m.prize = m.result === 'win' ? PRIZE : m.result === 'draw' ? FEE : 0; m.claimAt = now + CLAIM_MS;
+        m.prize = m.result === 'win' ? PRIZE : m.result === 'draw' ? FEE : 0; m.claimAt = now + CLAIM_MS; m.at = now;
       }
     });
     save(s);
   }
+  // slots = matches waiting for an opponent + won/drawn matches (that were waiting) whose prize is not claimed yet
+  function slots() {
+    const waiting = s.matches.filter(m => m.result === 'pending').length;
+    const unclaimed = s.matches.filter(m => m.asA && m.result !== 'pending' && m.prize > 0 && !m.claimed).length;
+    const used = waiting + unclaimed, blocked = used >= WAIT_MAX;
+    return { waiting, unclaimed, used, limit: WAIT_MAX, blocked, reason: blocked ? (waiting >= WAIT_MAX ? 'waiting_limit' : 'claim_first') : null };
+  }
+  function prune() { // keep the latest 10; remove the oldest FINISHED row (waiting rows stay); unclaimed prize is paid out
+    while (s.matches.length > HISTORY_MAX) {
+      let idx = -1, oldest = Infinity;
+      s.matches.forEach((m, i) => { if (m.result !== 'pending' && m.at < oldest) { oldest = m.at; idx = i; } });
+      if (idx < 0) break;
+      const m = s.matches[idx];
+      if (m.prize > 0 && !m.claimed) s.coins += m.prize;
+      s.matches.splice(idx, 1);
+    }
+  }
   return {
-    async me() { return { name: name(), coins: s.coins, hearts: s.hearts }; },
+    async me() { settle(); prune(); save(s); return { name: name(), coins: s.coins, hearts: s.hearts, ...slots() }; },
     async start() {
+      settle();
+      const sl = slots(); if (sl.blocked) throw new Error(sl.reason);
       if (s.coins < FEE) throw new Error('not_enough_coins');
       s.coins -= FEE;
-      const has = Math.random() < 0.6;
+      const has = !Q.get('wait') && Math.random() < 0.35;   // ?wait=1 -> never finds an opponent (to test the 5-slot limit)
       const opp = has ? { name: oppName(), score: 6 + Math.floor(Math.random() * 30) } : null;
       s.active = { id: rid(), opp, at: Date.now() }; save(s);
       return { matchId: s.active.id, seed: s.active.id, role: has ? 'b' : 'a', opponent: opp, coins: s.coins, hearts: s.hearts };
@@ -74,28 +95,35 @@ const Mock = (() => {
     async finish({ matchId, score, forfeit }) {
       const a = s.active; if (!a || a.id !== matchId) throw new Error('not_active');
       s.active = null;
-      if (forfeit) { save(s); return { result: 'forfeit', coins: s.coins }; }
+      if (forfeit) {
+        if (a.opp) { s.matches.unshift({ id: a.id, opponent: a.opp.name, myScore: 0, oppScore: a.opp.score, result: 'loss', prize: 0, claimAt: Date.now(), claimed: false, at: Date.now(), asA: false }); prune(); }
+        save(s); return { result: 'forfeit', coins: s.coins, ...slots() };
+      }
       if (!a.opp) {
-        s.matches.unshift({ id: a.id, opponent: null, myScore: score, oppScore: null, result: 'pending', prize: 0, claimAt: 0, claimed: false, at: Date.now() });
-        save(s); return { result: 'waiting', myScore: score, coins: s.coins };
+        s.matches.unshift({ id: a.id, opponent: null, myScore: score, oppScore: null, result: 'pending', prize: 0, claimAt: 0, claimed: false, at: Date.now(), asA: true });
+        prune(); save(s); return { result: 'waiting', myScore: score, coins: s.coins, ...slots() };
       }
       const r = score > a.opp.score ? 'win' : score < a.opp.score ? 'loss' : 'draw';
       const prize = r === 'win' ? PRIZE : r === 'draw' ? FEE : 0, claimAt = Date.now() + CLAIM_MS;
-      s.matches.unshift({ id: a.id, opponent: a.opp.name, myScore: score, oppScore: a.opp.score, result: r, prize, claimAt, claimed: false, at: Date.now() });
-      save(s);
-      return { result: r, myScore: score, oppScore: a.opp.score, prize, claimAt, coins: s.coins };
+      s.matches.unshift({ id: a.id, opponent: a.opp.name, myScore: score, oppScore: a.opp.score, result: r, prize, claimAt, claimed: false, at: Date.now(), asA: false });
+      prune(); save(s);
+      return { result: r, myScore: score, oppScore: a.opp.score, prize, claimAt, coins: s.coins, ...slots() };
     },
     async revive(matchId) {
       if (!s.active || s.active.id !== matchId) throw new Error('not_active');
       if (s.hearts < 1) throw new Error('no_hearts');
       s.hearts -= 1; save(s); return { hearts: s.hearts };
     },
-    async history() { settle(); return { items: s.matches.slice(0, 50), coins: s.coins }; },
+    async history() {
+      settle(); prune(); save(s);
+      const items = s.matches.slice().sort((x, y) => y.at - x.at).slice(0, HISTORY_MAX);
+      return { items, coins: s.coins, hearts: s.hearts, ...slots() };
+    },
     async claim(id) {
       const m = s.matches.find(x => x.id === id);
       if (!m || m.claimed || !m.prize) throw new Error('nothing');
       if (Date.now() < m.claimAt) throw new Error('too_early');
-      m.claimed = true; s.coins += m.prize; save(s); return { coins: s.coins };
+      m.claimed = true; s.coins += m.prize; save(s); return { coins: s.coins, ...slots() };
     },
   };
 })();

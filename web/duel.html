@@ -97,7 +97,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
    <div class="a t" style="left:70px;right:0;top:0;line-height:70px;font-size:38px;font-weight:700;text-align:center">HISTORY</div>
    <i id="hdot" class="a" style="display:none;right:-6px;top:-6px;width:26px;height:26px;border-radius:50%;background:#ff3b3b;border:3px solid #fff"></i>
   </button>
-  <div class="a c" style="left:60px;right:60px;top:1216px;font-size:26px;line-height:1.2;opacity:.92">Play your run first.<br>Compare scores after.</div>
+  <div id="note" class="a c" style="left:40px;right:40px;top:1212px;font-size:25px;line-height:1.2;opacity:.95">Play your run first.<br>Compare scores after.</div>
  </div>
 
  <!-- ================= INTRO (5s before run) ================= -->
@@ -188,11 +188,24 @@ const avatarIdx=name=>hash(name)%AV.length;
 /* ------------------------------------------------------------------ */
 /*  State                                                              */
 /* ------------------------------------------------------------------ */
-let state='lobby', coins=0, hearts=0, session=null, busy=false, lastScore=0;
+let state='lobby', coins=0, hearts=0, session=null, busy=false, lastScore=0, slots=null;
 function setHearts(n){ hearts=n; $('lheart').textContent=n; $('gHeart').textContent=n; }
 const show=(id,on)=>$(id).classList.toggle('on',on);
 
-async function refreshCoins(){ try{ const u=await api.me(); coins=u.coins; $('lcoins').textContent=fmt(coins); setHearts(u.hearts||0); $('play').classList.toggle('dim',coins<FEE);}catch(e){} }
+/* Slots: max 5 open matches (waiting for an opponent, or won but prize not claimed yet) */
+function applySlots(u){
+  if(!u||u.limit==null) return;
+  slots={waiting:u.waiting,unclaimed:u.unclaimed,limit:u.limit,blocked:!!u.blocked,reason:u.reason};
+  const n=$('note');
+  if(slots.blocked) n.innerHTML = slots.reason==='claim_first'
+    ? '<span class="gold">Claim your prize in History</span><br>to play again'
+    : '<span class="gold">Waiting limit reached ('+slots.waiting+'/'+slots.limit+')</span><br>Wait for a result to play again';
+  else n.innerHTML = 'Waiting matches: <span class="gold">'+slots.waiting+'/'+slots.limit+'</span>'+(slots.unclaimed?'<br>Prizes to claim: <span class="gold">'+slots.unclaimed+'</span>':'<br>Compare scores after your run.');
+  updPlay();
+}
+function updPlay(){ $('play').classList.toggle('dim',coins<FEE||!!(slots&&slots.blocked)); }
+async function refreshCoins(){ try{ const u=await api.me(); coins=u.coins; $('lcoins').textContent=fmt(coins); setHearts(u.hearts||0); applySlots(u); updPlay(); }catch(e){} }
+setInterval(()=>{ if(state==='lobby'&&!busy&&!document.hidden) refreshCoins(); },20000);
 async function checkClaimDot(){ try{ const h=await api.history(); const now=Date.now(); $('hdot').style.display=h.items.some(i=>i.prize&&!i.claimed&&i.claimAt&&now>=i.claimAt)?'block':'none'; }catch(e){} }
 refreshCoins(); checkClaimDot();
 
@@ -226,6 +239,8 @@ if(tg&&tg.BackButton){ tg.BackButton.show(); tg.BackButton.onClick(()=>{ if(stat
 
 $('play').onclick=async()=>{
   if(busy) return;
+  if(slots&&slots.blocked){ busy=true; await refreshCoins(); busy=false; }   // the info may be old: re-check first
+  if(slots&&slots.blocked){ toast(slots.reason==='claim_first'?'Claim your prize in History first':'Waiting limit reached ('+slots.limit+'/'+slots.limit+')'); haptic('rigid'); return; }
   if(coins<FEE){ toast('You need '+FEE+' coins to play'); haptic('rigid'); return; }
   busy=true; state='spin'; haptic('medium');
   $('oppNote').textContent='Searching opponent…';
@@ -234,7 +249,7 @@ $('play').onclick=async()=>{
   const iv0=setInterval(()=>{ if(!spinning) return; $('oppName').textContent='Player '+(1000+Math.floor(Math.random()*9000)); $('oppScore').textContent=Math.floor(Math.random()*80); },70);
   let s=await startP; spinning=false; clearInterval(iv0);
   if(s instanceof Error){ busy=false; state='lobby'; $('oppName').textContent='OPPONENT'; $('oppScore').textContent='0'; $('oppNote').textContent='From a previous run';
-    toast(s.message==='not_enough_coins'?'You need '+FEE+' coins to play':'Connection problem, try again'); refreshCoins(); return; }
+    toast(s.message==='not_enough_coins'?'You need '+FEE+' coins to play':s.message==='waiting_limit'?'Waiting limit reached (5/5)':s.message==='claim_first'?'Claim your prize in History first':'Connection problem, try again'); refreshCoins(); return; }
   session=s; coins=s.coins; $('lcoins').textContent=fmt(coins); if(s.hearts!=null) setHearts(s.hearts);
   const idx=s.opponent?avatarIdx(s.opponent.name):0;
   await Promise.all([ spinTo(idx,1700), flicker(1700,()=>{ $('oppName').textContent='Player '+(1000+Math.floor(Math.random()*9000)); $('oppScore').textContent=Math.floor(Math.random()*80); }) ]);
@@ -312,10 +327,10 @@ function circleRect(cx0,cy0,r,x,y,w,h){const nx=Math.max(x,Math.min(cx0,x+w)),ny
 
 function step(dt){
   if(state==='intro'){ wd.t+=dt; wd.ry=560+Math.sin(wd.t*3)*14; wd.dist+=60*dt; return; }
-  if(state==='revive'){ wd.t+=dt; wd.ry=wd.hoverY+Math.sin(wd.t*3)*6; wd.dist+=40*dt; return; }
+  if(state==='revive'){ wd.t+=dt; wd.ry=wd.hoverY+Math.sin(wd.t*3)*6; return; }   // the whole world stands still while you get ready
   if(state==='dead'){ wd.deadT+=dt; wd.vy=Math.min(900,wd.vy+GRAV*dt); wd.ry=Math.min(GROUND-40,wd.ry+wd.vy*dt); return; }
   if(state!=='run'||wd.paused) return;
-  const SPEED=speedFor(wd.score); wd.t+=dt; wd.dist+=SPEED*dt;
+  const SPEED=speedFor(wd.score); wd.t+=dt; wd.dist+=SPEED*dt; if(wd.grace>0) wd.grace-=dt;
   wd.vy=Math.min(1100,wd.vy+GRAV*dt); wd.ry+=wd.vy*dt;
   if(wd.ry<RR){ wd.ry=RR; wd.vy=0; }
   wd.nextX-=SPEED*dt;           // the spawn point scrolls with the world
@@ -323,7 +338,7 @@ function step(dt){
   for(const p of wd.pipes){
     p.x-=SPEED*dt;
     if(!p.passed&&p.x+PW<wd.rx-RR){ p.passed=true; wd.score++; onScore(); }
-    if(circleRect(wd.rx,wd.ry,RR-4,p.x,-50,PW,p.gy-p.gap/2+50)||circleRect(wd.rx,wd.ry,RR-4,p.x,p.gy+p.gap/2,PW,GROUND-(p.gy+p.gap/2))) return crash();
+    if(!(wd.grace>0)&&(circleRect(wd.rx,wd.ry,RR-4,p.x,-50,PW,p.gy-p.gap/2+50)||circleRect(wd.rx,wd.ry,RR-4,p.x,p.gy+p.gap/2,PW,GROUND-(p.gy+p.gap/2)))) return crash();
   }
   wd.pipes=wd.pipes.filter(p=>p.x>-PW-20);
   if(wd.ry+RR>GROUND) crash();
@@ -360,11 +375,11 @@ function draw(now){
     if(cr.complete) cx.drawImage(cr,wd.rx-80,wd.ry-82,160,167);
   } else {
     const r=IMG['14_fly_dodge_rocket']; if(r.complete){
-      cx.save(); cx.translate(wd.rx,wd.ry); cx.rotate(Math.max(-.5,Math.min(.9,wd.vy/1100))*.7);
+      cx.save(); cx.translate(wd.rx,wd.ry); cx.rotate(Math.max(-.5,Math.min(.9,wd.vy/1100))*.7); if(wd.grace>0&&Math.floor(wd.grace*12)%2) cx.globalAlpha=.45;
       cx.drawImage(r,ROCKET.sx,ROCKET.sy,ROCKET.sw,ROCKET.sh,-78,-64,156,128); cx.restore(); }
   }
   // big score
-  if(state==='run'||state==='dead'){
+  if(state==='run'||state==='dead'||state==='revive'){
     cx.font='700 130px Fredoka, sans-serif'; cx.textAlign='center'; cx.lineWidth=14; cx.strokeStyle='rgba(30,20,110,.85)'; cx.fillStyle='#fff';
     const x=W/2; cx.strokeText(wd.score,x,330); cx.fillText(wd.score,x,330);
   }
@@ -407,25 +422,23 @@ $('rvYes').onclick=async()=>{
   if(state!=='dead') return;
   $('rvYes').disabled=true;
   try{ const r=await api.revive(session.matchId); setHearts(r.hearts); }
-  catch(e){ $('rvYes').disabled=false; toast('No heart available'); show('rvDlg',false); endRun(false); return; }
+  catch(e){ $('rvYes').disabled=false; toast(e.message==='no_hearts'?'No heart available':'Could not use the heart'); show('rvDlg',false); endRun(false); return; }
   $('rvYes').disabled=false; show('rvDlg',false); startRevive();
 };
 function startRevive(){
-  // The rocket stays EXACTLY where it was when it crashed (same x, same height).
-  // Only the pipes that are still ahead are pushed back, so the pipe it hit is now in front of the rocket.
-  const nx=wd.pipes.find(p=>!p.passed);
-  const dx=nx?Math.max(0,(wd.rx+380)-nx.x):0;
-  wd.pipes.forEach(p=>{ if(!p.passed) p.x+=dx; });                // pipes already passed stay where they are
-  wd.pipes=wd.pipes.filter(p=>p.passed?p.x+PW<wd.rx-RR-6:true);   // (drop any that would overlap the rocket)
-  wd.nextX+=dx;
-  const y=Math.max(70,Math.min(GROUND-120,wd.crashY!=null?wd.crashY:wd.ry));
-  wd.hoverY=y; wd.ry=y; wd.vy=0; wd.dead=false; wd.deadT=0; wd.t=0;
+  // Continue from the exact spot where the rocket crashed:
+  //  - NO pipe is moved or removed (the ones already passed stay behind you, the ones ahead stay ahead)
+  //  - the rocket keeps its x and only gets lifted to the nearest safe height (inside the gap it crashed into)
+  let y=Math.max(RR+20,Math.min(GROUND-RR-120,wd.crashY!=null?wd.crashY:wd.ry));
+  const hit=wd.pipes.find(p=>p.x<wd.rx+RR+8&&p.x+PW>wd.rx-RR-8);          // pipe overlapping the rocket's column
+  if(hit){ const lo=hit.gy-hit.gap/2+RR+16, hi=hit.gy+hit.gap/2-RR-16; y=Math.max(lo,Math.min(hi,y)); }
+  wd.hoverY=y; wd.ry=y; wd.vy=0; wd.dead=false; wd.deadT=0; wd.t=0; wd.crashY=null;
   state='revive'; haptic('medium');
   let n=3; $('rvNum').textContent=n; $('rvCount').style.display='block';
   const iv=setInterval(()=>{
     if(state!=='revive'){ clearInterval(iv); $('rvCount').style.display='none'; return; }
     if($('exitDlg').classList.contains('on')) return;
-    n--; if(n<=0){ clearInterval(iv); $('rvCount').style.display='none'; state='run'; wd.vy=FLAP*0.4; haptic('light'); return; }
+    n--; if(n<=0){ clearInterval(iv); $('rvCount').style.display='none'; state='run'; wd.vy=FLAP*0.4; wd.grace=.7; haptic('light'); return; }
     $('rvNum').textContent=n; haptic('light');
   },1000);
 }
@@ -453,7 +466,7 @@ async function endRun(forfeit){
   try{ r=await api.finish({matchId:session.matchId,score}); }
   catch(e){ toast('Connection problem — retrying…'); await new Promise(x=>setTimeout(x,1500));
             try{ r=await api.finish({matchId:session.matchId,score}); }catch(e2){ toast('Could not save the result'); backToLobby(); return; } }
-  coins=r.coins; showResult(r,score);
+  coins=r.coins; applySlots(r); showResult(r,score);
 }
 function showResult(r,score){
   const ban=$('rBanner'), burst=$('rBurst'), spin=$('rSpin'), line=$('rLine');
@@ -464,7 +477,7 @@ function showResult(r,score){
   ban.className='a pop';
   if(r.result==='waiting'){
     ban.style.display='none'; spin.style.display='block'; $('rOpp').textContent='?'; $('rOppN').textContent='Waiting…';
-    line.innerHTML='<span class="gold">Score saved!</span><br>Waiting for other players.<br>Check History for the result.';
+    line.innerHTML='<span class="gold">Score saved!</span><br>Waiting for other players ('+(r.waiting!=null?r.waiting+'/'+r.limit:'')+')<br>'+(r.blocked?'<span style="font-size:24px">Limit reached: wait for a result to play again</span>':'<span style="font-size:24px">Check History for the result</span>');
   } else {
     ban.style.display='block';
     ban.src='assets/'+(r.result==='win'?'61_you_win_banner':r.result==='loss'?'62_you_lose_banner':'63_draw_banner')+'.webp';
