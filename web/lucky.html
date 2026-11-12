@@ -127,6 +127,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- ================= RESULT ================= -->
  <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
   <img id="rFrame" class="a pop" style="left:0;top:344px;width:706px" alt="">
+  <div id="rFx" class="a" style="left:0;top:0;width:720px;height:1400px;pointer-events:none;overflow:hidden"></div>
   <!-- lose popup: lucky-only frame (no bomb art); skull card sits on the red slot -->
   <div id="rLoseBox" class="a" style="display:none;left:0;top:420px;width:720px;height:600px;pointer-events:none">
     <img class="a" src="assets/lucky_frame_lose.webp" style="left:0;top:0;width:720px" alt="">
@@ -161,6 +162,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 <div id="toast"></div>
 
 <script src="common.js"></script>
+<script src="fx.js"></script>
 <script>
 /* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
 const SW = 720, SH = 1400; let SC = 1;
@@ -251,12 +253,22 @@ function paintRound(msg) {
   $('gMsg').innerHTML = msg || 'Tap one card to reveal it. Good luck!';
   setCoins();
 }
+FX.pre(['lucky_win_burst_01','lucky_win_burst_02','lucky_win_burst_03','lucky_win_burst_04','lucky_win_burst_05','lucky_win_burst_06',
+  'lucky_skull_smoke_01','lucky_skull_smoke_02','lucky_skull_smoke_03','lucky_skull_smoke_04','lucky_skull_smoke_05','lucky_skull_smoke_06',
+  'card_glow_gold','card_glow_red','card_shine_sweep','fx_shockwave_ring','fx_sparkle_star_a','fx_sparkle_star_b','fx_smoke_puff','coin_spin_01','coin_spin_02','coin_spin_03','coin_spin_04','coin_spin_05','coin_spin_06','coin_spin_07','coin_spin_08',
+  'fx_confetti_01','fx_confetti_02','fx_confetti_03','fx_confetti_04','fx_confetti_05','fx_confetti_06']);
 function fx(i, kind) {
-  const c = $('c' + i), x = parseFloat(c.style.left) + 60, y = parseFloat(c.style.top) + 84, s = kind === 'skull' ? 300 : 260;
-  const im = document.createElement('img'); im.className = 'fx';
-  im.src = kind === 'skull' ? L('11_fx_skull_smoke') : L('10_fx_win_burst');
-  im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`;
-  $('fxLayer').appendChild(im); setTimeout(() => im.remove(), 900);
+  const c = $('c' + i), x = parseFloat(c.style.left) + 60, y = parseFloat(c.style.top) + 84, Ly = $('fxLayer');
+  if (kind === 'skull') {
+    FX.glow(Ly, 'card_glow_red', x, y, 260, 800, 1.37);
+    FX.flipbook(Ly, 'lucky_skull_smoke', 6, x, y, 360, { fps: 9, fade: 400 });
+    FX.smoke(Ly, x, y, 240); FX.shake($('game'), 10, 420);
+  } else {
+    FX.glow(Ly, 'card_glow_gold', x, y, 260, 900, 1.37);
+    FX.flipbook(Ly, 'lucky_win_burst', 6, x, y, 340, { fps: 12, fade: 350 });
+    FX.ring(Ly, x, y, 300, 650); FX.sparkles(Ly, x, y, 7, 150);
+    if (kind === 'gold' || kind === 'diamond') FX.coins(Ly, x, y, 6);
+  }
 }
 let timers = [];
 const later = (fn, ms) => { const id = setTimeout(fn, ms); timers.push(id); return id; };
@@ -335,7 +347,9 @@ function showResult(d) {
   bn.textContent = net > 0 ? '+' + num(net) + ' COINS' : net === 0 ? 'EVEN' : '-' + num(-net) + ' COINS';
   bn.style.color = net > 0 ? '#5a2f00' : '#f6e8ff'; bn.style.textShadow = net > 0 ? '0 2px 0 rgba(255,255,255,.55)' : '0 2px 0 rgba(30,10,70,.8)';
   ['rFrame', 'rTitle'].forEach(id => { const el = $(id); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
+  $('rFx').innerHTML = '';
   show('result', true); haptic(net > 0 ? 'success' : 'error');
+  if (net > 0) { FX.confetti($('rFx'), 40, 720); FX.sparkles($('rFx'), 360, 640, 8, 220); }
 }
 $('rAgain').onclick = () => { show('result', false); startRound(lastBet); };
 $('rLobby').onclick = () => goLobby();

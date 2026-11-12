@@ -155,6 +155,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- ================= RESULT ================= -->
  <div id="result" class="layer" style="background:rgba(5,15,80,.62);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)">
   <img id="rFrame" class="a pop" style="left:0;top:344px;width:706px" alt="">
+  <div id="rFx" class="a" style="left:0;top:0;width:720px;height:1400px;pointer-events:none;overflow:hidden"></div>
   <div class="a c" id="rKicker" style="left:0;right:0;top:604px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
   <img id="rTitle" class="a pop" style="left:230px;top:626px;width:260px" alt="">
   <div class="a c" id="rSub" style="left:100px;right:100px;top:718px;font-size:23px;line-height:1.25"></div>
@@ -183,6 +184,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 </div>
 
 <script src="common.js"></script>
+<script src="fx.js"></script>
 <script>
 /* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
 const SW = 720, SH = 1400; let SC = 1;
@@ -286,10 +288,20 @@ function openTile(i, kind) {
   const t = $('t' + i); t.disabled = true; t.classList.add('open');
   t.querySelector('img').src = A(kind === 'bomb' ? '26_tile_bomb' : '25_tile_coin');
 }
+FX.pre(['bomb_explosion_01','bomb_explosion_02','bomb_explosion_03','bomb_explosion_04','bomb_explosion_05','bomb_explosion_06','bomb_explosion_07','bomb_explosion_08',
+  'fx_shockwave_ring','fx_smoke_puff','bomb_debris_01','bomb_debris_02','bomb_debris_03','bomb_debris_04','tile_glow_gold','tile_glow_red','fx_sparkle_star_a','fx_sparkle_star_b','fx_confetti_01','fx_confetti_02','fx_confetti_03','fx_confetti_04','fx_confetti_05','fx_confetti_06']);
 function fx(i, kind) {
-  const t = $('t' + i), x = parseFloat(t.style.left) + 69, y = parseFloat(t.style.top) + 69, s = kind === 'bomb' ? 300 : 240;
-  const im = document.createElement('img'); im.className = 'fx'; im.src = A(kind === 'bomb' ? '30_fx_explosion' : '29_fx_coin_burst');
-  im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`; $('fxLayer').appendChild(im); setTimeout(() => im.remove(), 800);
+  const t = $('t' + i), x = parseFloat(t.style.left) + 69, y = parseFloat(t.style.top) + 69, L = $('fxLayer');
+  if (kind === 'bomb') {
+    FX.glow(L, 'tile_glow_red', x, y, 300, 750);
+    FX.flipbook(L, 'bomb_explosion', 8, x, y, 400, { fps: 15 });      // fireball
+    FX.ring(L, x, y, 440, 600); FX.debris(L, x, y, 7); FX.smoke(L, x, y - 10, 280);
+    FX.shake($('game'), 12, 420);
+  } else {
+    FX.glow(L, 'tile_glow_gold', x, y, 240, 800); FX.ring(L, x, y, 260, 550); FX.sparkles(L, x, y, 6, 120);
+    const im = document.createElement('img'); im.className = 'fx'; im.src = A('29_fx_coin_burst'); const s = 240;
+    im.style.cssText = `left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px`; L.appendChild(im); setTimeout(() => im.remove(), 800);
+  }
 }
 function revealRest(mines) {   // end of round: show where the bombs were (dimmed), lock the board
   for (let i = 0; i < 16; i++) {
@@ -356,7 +368,9 @@ function showResult(kind, d) {
   bn.textContent = win ? '+' + num(d.prize) + ' COINS' : '-' + num(d.lost) + ' COINS';
   bn.style.color = win ? '#5a2f00' : '#f6e8ff'; bn.style.textShadow = win ? '0 2px 0 rgba(255,255,255,.55)' : '0 2px 0 rgba(30,10,70,.8)';
   ['rFrame', 'rTitle'].forEach(id => { const el = $(id); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
+  $('rFx').innerHTML = '';
   show('result', true); haptic(win ? 'success' : 'error');
+  if (win) { FX.confetti($('rFx'), 40, 720); FX.sparkles($('rFx'), 360, 640, 8, 220); }
 }
 $('rAgain').onclick = () => { show('result', false); startRound(lastCfg); };
 $('rLobby').onclick = () => goLobby();

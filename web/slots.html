@@ -38,7 +38,19 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 .cell.hit img{transform:scale(1.12);filter:drop-shadow(0 0 10px #ffd63a) drop-shadow(0 0 4px #fff)}
 .cell.dim img{filter:grayscale(.45) brightness(.7)}
 .strip.spin{animation:spinY .42s linear infinite}
-.strip.blur{filter:blur(1.4px)}
+.strip.blur{filter:none}
+/* lever pull (stick + ball foreshorten and flip down, then spring back) */
+#lever{transform-origin:91.1% 54.3%;will-change:transform}
+@keyframes leverPull{0%{transform:scale(1,1)}28%{transform:scale(1.1,-.5)}55%{transform:scale(1.1,-.5)}78%{transform:scale(1,1.1)}100%{transform:scale(1,1)}}
+#lever.pull{animation:leverPull .8s cubic-bezier(.3,.1,.3,1)}
+/* marquee bulbs: two glow groups alternate; faster while spinning / winning */
+.bulbs{mix-blend-mode:screen;pointer-events:none}
+@keyframes bulbA{0%,49%{opacity:1}50%,100%{opacity:.05}}
+@keyframes bulbB{0%,49%{opacity:.05}50%,100%{opacity:1}}
+#bulbA{animation:bulbA 1.2s steps(1) infinite}#bulbB{animation:bulbB 1.2s steps(1) infinite}
+#stage.fast #bulbA,#stage.fast #bulbB{animation-duration:.3s}
+#stage.win #bulbA,#stage.win #bulbB{animation-duration:.16s}
+@media (prefers-reduced-motion:reduce){#bulbA,#bulbB{animation:none!important;opacity:.6}}
 @keyframes spinY{from{transform:translateY(0)}to{transform:translateY(-790px)}}
 .winline{position:absolute;pointer-events:none;opacity:0;transition:opacity .2s}
 .winline.on{opacity:1}
@@ -76,8 +88,13 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- reels: placed BEHIND the machine, exactly under its transparent window (stage x152-549, y547-785) -->
  <div id="reelView" style="left:152px;top:547px;width:397px;height:238px"></div>
  <!-- machine: its own gold frame covers the reel edges, so symbols look like they are inside -->
- <img class="a" src="assets/slot_03_machine.webp" style="left:20px;top:236px;width:680px" alt="">
+ <img class="a" src="assets/slot_machine_nolever.webp" style="left:20px;top:236px;width:680px" alt="">
+ <img id="bulbA" class="a bulbs" src="assets/slot_bulbs_a.webp" style="left:20px;top:236px;width:680px" alt="">
+ <img id="bulbB" class="a bulbs" src="assets/slot_bulbs_b.webp" style="left:20px;top:236px;width:680px" alt="">
+ <img id="lever" class="a" src="assets/slot_lever.webp" style="left:20px;top:236px;width:680px" alt="">
+ <button id="leverBtn" class="a" aria-label="Pull lever" style="left:596px;top:498px;width:118px;height:220px;background:none;border:0;padding:0"></button>
  <div id="winline" class="winline a" style="left:160px;top:662px;width:380px;height:7px;border-radius:4px;z-index:2;background:linear-gradient(90deg,rgba(255,214,58,0),#ffd63a 12%,#fff6c2 50%,#ffd63a 88%,rgba(255,214,58,0));box-shadow:0 0 10px 2px rgba(255,214,58,.9),0 0 22px 4px rgba(255,190,40,.55)"></div>
+ <div id="slotFx" class="a" style="left:0;top:0;width:720px;height:1400px;pointer-events:none;z-index:5"></div>
  <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:200px;top:516px;width:300px;height:300px" alt="">
 
  <!-- bet -->
@@ -132,6 +149,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 
 <script src="slots_math.js"></script>
 <script src="common.js"></script>
+<script src="fx.js"></script>
 <script>
 /* ---------- stage: 720 x 1400 design, scaled to fit ---------- */
 const SW = 720, SH = 1400; let SC = 1;
@@ -141,6 +159,8 @@ fit(); addEventListener('resize', fit); addEventListener('orientationchange', fi
 
 const SYM_IMG = { seven: 'assets/slot_s1_seven.webp', bar: 'assets/slot_s2_bar.webp', cherry: 'assets/slot_s3_cherry.webp', bell: 'assets/slot_s4_bell.webp',
   diamond: 'assets/slot_s5_diamond.webp', horse: 'assets/slot_s6_horseshoe.webp', bag: 'assets/slot_s7_coinbag.webp', wild: 'assets/slot_s8_star_wild.webp' };
+const BLUR_IMG = { seven: 'assets/slot_symbol_blur_seven.webp', bar: 'assets/slot_symbol_blur_bar.webp', cherry: 'assets/slot_symbol_blur_cherry.webp', bell: 'assets/slot_symbol_blur_bell.webp',
+  diamond: 'assets/slot_symbol_blur_diamond.webp', horse: 'assets/slot_symbol_blur_horseshoe.webp', bag: 'assets/slot_symbol_blur_coinbag.webp', wild: 'assets/slot_symbol_blur_wildstar.webp' };
 const SYM_NAME = { seven: 'Lucky 7', bar: 'BAR', cherry: 'Cherry', bell: 'Bell', diamond: 'Diamond', horse: 'Horseshoe', bag: 'Coin bag', wild: 'WILD star' };
 const SYM_KEYS = ['seven', 'bar', 'diamond', 'horse', 'bell', 'bag', 'cherry', 'wild'];
 
@@ -167,6 +187,7 @@ function buildReels() {
   for (let r = 0; r < 3; r++) setReel(r, ['bell', 'seven', 'cherry'], false);
 }
 const cellHTML = k => `<div class="cell"><img src="${SYM_IMG[k]}" alt="${SYM_NAME[k]}"></div>`;
+const blurCellHTML = k => `<div class="cell"><img src="${BLUR_IMG[k]}" alt=""></div>`;
 function setReel(r, triple, dim) {   // triple = [top, middle, bottom]
   const strip = reelCols[r].querySelector('.strip');
   strip.classList.remove('spin', 'blur'); strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
@@ -179,7 +200,7 @@ function startSpinning() {
     const strip = reelCols[r].querySelector('.strip');
     // 10 random symbols repeated 3 times: the loop is seamless because one cycle = 790px
     const cycle = Array.from({ length: 10 }, () => SYM_KEYS[Math.floor(Math.random() * SYM_KEYS.length)]);
-    strip.innerHTML = [...cycle, ...cycle, ...cycle].map(cellHTML).join('');
+    strip.innerHTML = [...cycle, ...cycle, ...cycle].map(blurCellHTML).join('');
     strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
     strip.classList.add('blur'); void strip.offsetWidth; strip.classList.add('spin');
   }
@@ -235,8 +256,9 @@ function readBetInput() {   // typed value: check it is a whole number in range
 }
 function paintSpin() {
   const can = !busy && !autoRun && coins >= bet;
-  $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : 'assets/slot_06_spin_disabled.webp';
-  $('spin').disabled = !can; $('spinTxt').style.opacity = can ? 1 : .55;
+  const pressed = busy && !autoRun;
+  $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : pressed ? 'assets/slot_spin_pressed.webp' : 'assets/slot_06_spin_disabled.webp';
+  $('spin').disabled = !can; $('spinTxt').style.opacity = can || pressed ? 1 : .55; $('spinTxt').style.transform = pressed ? 'translateY(8px)' : '';
   $('autoTxt').textContent = autoRun ? 'STOP' : 'AUTO';
   $('auto').disabled = busy && !autoRun;
   $('minus').disabled = $('plus').disabled = busy || !!autoRun;
@@ -252,18 +274,20 @@ function haptic(kind) { try { tg && tg.HapticFeedback && tg.HapticFeedback.impac
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function spinOnce() {   // returns the server result, or null if it failed
   busy = true; paintSpin(); $('msg').textContent = ''; startSpinning();
+  pullLever(); $('stage').classList.remove('win'); $('stage').classList.add('fast');
   let res = null;
   try {
     res = await api.slotSpin({ bet });
   } catch (e) {
     for (let r = 0; r < 3; r++) setReel(r, ['bell', 'seven', 'cherry'], false);
-    toast(errMsg(e));
+    toast(errMsg(e)); $('stage').classList.remove('fast');
     busy = false; paintSpin(); return null;
   }
   coins = res.coins; setCoins();
   // stop reels one by one, left to right
-  const stops = [0, 1, 2].map(r => stopReel(r, res.reels[r], 900 + r * 420));
+  const stops = [0, 1, 2].map(r => stopReel(r, res.reels[r], 900 + r * 420).then(() => { FX.shake($('reelView'), 3, 160); haptic('light'); }));
   await Promise.all(stops);
+  $('stage').classList.remove('fast');
   // highlight the win line
   const win = res.win > 0;
   reelCols.forEach((col) => {
@@ -273,7 +297,7 @@ async function spinOnce() {   // returns the server result, or null if it failed
   if (win) {
     $('winline').classList.add('on');
     $('fx').classList.remove('on'); void $('fx').offsetWidth; $('fx').classList.add('on');
-    haptic('success');
+    haptic('success'); winFx(res);
     $('msg').innerHTML = `<span class="gold">${SYM_NAME[res.sym]} ×${res.mult}</span> · WIN <span class="gold">+${num(res.win)}</span>`;
   } else {
     haptic('error');
@@ -283,6 +307,19 @@ async function spinOnce() {   // returns the server result, or null if it failed
   return res;
 }
 $('spin').onclick = () => { if (!busy && !autoRun) spinOnce(); };
+$('leverBtn').onclick = () => { if (!busy && !autoRun && coins >= bet) spinOnce(); };
+function pullLever() { const l = $('lever'); l.classList.remove('pull'); void l.offsetWidth; l.classList.add('pull'); }
+FX.pre(['coin_spin_01','coin_spin_02','coin_spin_03','coin_spin_04','coin_spin_05','coin_spin_06','coin_spin_07','coin_spin_08','fx_shockwave_ring','fx_sparkle_star_a','fx_sparkle_star_b','fx_confetti_01','fx_confetti_02','fx_confetti_03','fx_confetti_04','fx_confetti_05','fx_confetti_06','slot_jackpot_burst','slot_spin_pressed']);
+function winFx(res) {
+  const L = $('slotFx'), big = res.mult >= 20 || res.win >= bet * 20;
+  FX.ring(L, 350, 665, 420, 700); FX.sparkles(L, 350, 665, big ? 14 : 8, 200); FX.coins(L, 350, 700, big ? 16 : 7);
+  $('stage').classList.add('win'); setTimeout(() => $('stage').classList.remove('win'), big ? 2600 : 1600);
+  if (big) {
+    const b = FX.mk(L, 'slot_jackpot_burst', 360, 620, 720, 'mix-blend-mode:screen');
+    b.animate([{ transform: 'scale(.4) rotate(0)', opacity: 0 }, { transform: 'scale(1) rotate(40deg)', opacity: 1, offset: .25 }, { transform: 'scale(1.2) rotate(110deg)', opacity: 0 }], { duration: 2200, easing: 'ease-out', fill: 'both' }).onfinish = () => b.remove();
+    FX.confetti(L, 40, 720); FX.shake($('stage'), 8, 420);
+  }
+}
 
 /* ---------- auto spin ---------- */
 let autoCount = 25;

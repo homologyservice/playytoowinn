@@ -42,6 +42,89 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .nb span{position:absolute;left:0;right:0;top:86px;text-align:center;font-size:26px;font-weight:700;text-shadow:0 3px 0 rgba(30,20,110,.7)}
 .nb.on{background:linear-gradient(#3b8bff,#2a5fe2);top:-4px;height:148px}
 .nb.on img{width:112px;top:-16px}
+
+/* ===== Home animations ===== */
+/* rocket: same float + tilt as the Fly & Dodge lobby */
+@keyframes rocketBob{0%,100%{transform:translateY(0) rotate(4deg)}50%{transform:translateY(-14px) rotate(9deg)}}
+.rocketBob{animation:rocketBob 2.2s ease-in-out infinite;will-change:transform}
+/* spin wheel: turns slowly, stops, turns again (ticks with a small wind-back and settle) */
+.wheelimg{transform-origin:50% 50%;will-change:transform}
+@keyframes wheelTick{
+ 0%,10%{transform:rotate(0)}
+ 12.5%{transform:rotate(-5deg)}
+ 27%{transform:rotate(112deg)}
+ 30%{transform:rotate(105deg)}
+ 50%{transform:rotate(105deg)}
+ 52%{transform:rotate(100deg)}
+ 60%{transform:rotate(158deg)}
+ 62.5%{transform:rotate(152deg)}
+ 77%{transform:rotate(152deg)}
+ 79%{transform:rotate(147deg)}
+ 96%{transform:rotate(360deg)}
+ 100%{transform:rotate(360deg)}}
+.wheelTick{animation:wheelTick 15s ease-in-out infinite}
+/* fallback when the separate wheel/pointer art is missing: whole wheel only wiggles */
+@keyframes wheelWiggle{0%,12%,48%,100%{transform:rotate(0)}18%{transform:rotate(-7deg)}26%{transform:rotate(6deg)}34%{transform:rotate(-3deg)}40%{transform:rotate(0)}}
+.wheelWiggle{animation:wheelWiggle 6s ease-in-out infinite}
+.wheelwrap{position:relative;width:84px;height:84px;margin:0 auto -6px}
+.wheelwrap img{position:absolute;left:0;top:0;width:84px;margin:0}
+@keyframes ptrNudge{0%,28%,100%{transform:rotate(0)}8%{transform:rotate(-6deg)}16%{transform:rotate(3deg)}}
+.ptr{transform-origin:50% 22%}
+.wheelwrap.run .ptr{animation:ptrNudge 15s ease-in-out infinite}
+/* logo: letters puff out one by one and spring back */
+#logo{position:absolute;left:148px;top:262px;width:420px;height:280px}
+#logo img{position:absolute;left:0;top:0;width:420px;height:auto}
+@keyframes letterPop{
+ 0%{transform:scale(1,1)}
+ 5%{transform:translateY(-5px) scale(1.3,1.34)}
+ 10%{transform:translateY(0) scale(.86,.84)}
+ 15%{transform:scale(1.13,1.12)}
+ 19%{transform:scale(.96,.97)}
+ 23%{transform:scale(1.03,1.03)}
+ 27%,100%{transform:scale(1,1)}}
+.letter{animation:letterPop 4.4s infinite;animation-delay:calc(var(--i)*.09s);will-change:transform}
+@keyframes logoPop{0%,100%{transform:scale(1)}6%{transform:scale(1.12)}12%{transform:scale(.95)}18%{transform:scale(1.04)}24%{transform:scale(1)}}
+.logoWhole{animation:logoPop 4.4s infinite;transform-origin:50% 55%}
+/* generic tap feedback (stretch, then squash) */
+@keyframes tapSquash{0%{transform:scale(1)}25%{transform:scale(.88,1.14)}55%{transform:scale(1.12,.88)}80%{transform:scale(.97,1.03)}100%{transform:scale(1)}}
+.sq{animation:tapSquash .42s ease-out}
+/* gift box: little shake now and then */
+@keyframes giftShake{0%,70%,100%{transform:rotate(0) scale(1)}74%{transform:rotate(-7deg) scale(1.05)}79%{transform:rotate(6deg) scale(1.05)}84%{transform:rotate(-4deg)}89%{transform:rotate(2deg)}}
+.gift{animation:giftShake 4s ease-in-out infinite;transform-origin:50% 80%}
+/* daily bonus chest */
+.chestwrap{position:relative;width:84px;height:84px;margin:0 auto -6px}
+.chestwrap img{position:absolute;left:0;top:0;width:84px;margin:0;transform-origin:50% 100%;will-change:transform}
+@keyframes chestIdle{0%,40%,100%{transform:scale(1,1) rotate(0)}
+ 6%{transform:scale(1.07,.92) rotate(-3deg)}12%{transform:scale(.94,1.08) rotate(3deg)}
+ 19%{transform:scale(1.04,.97) rotate(-2deg)}26%{transform:scale(.99,1.02) rotate(1deg)}33%{transform:scale(1,1) rotate(0)}}
+.chestwrap.idle img{animation:chestIdle 3.8s ease-in-out infinite}
+@keyframes chestSlam{
+ 0%{transform:scale(1,1) translateY(0)}
+ 16%{transform:scale(.82,1.2) translateY(2px)}
+ 36%{transform:scale(.88,1.42) translateY(-30px)}
+ 52%{transform:scale(1,1.12) translateY(-12px)}
+ 60%{transform:scale(1.34,.62) translateY(0)}
+ 72%{transform:scale(.93,1.1) translateY(0)}
+ 84%{transform:scale(1.05,.97)}
+ 100%{transform:scale(1,1)}}
+.chestwrap.slam img{animation:chestSlam 1s cubic-bezier(.3,.1,.3,1) both}
+.chestwrap i{position:absolute;pointer-events:none;border-radius:50%;opacity:0}
+.chestwrap .shock{left:50%;top:84%;width:70px;height:70px;margin:-35px 0 0 -35px;border:7px solid #fff3b0;box-shadow:0 0 18px 4px rgba(255,210,70,.9),inset 0 0 12px rgba(255,210,70,.7)}
+.chestwrap .shock.s2{border-color:#ffd24a;width:50px;height:50px;margin:-25px 0 0 -25px}
+@keyframes shockOut{0%{opacity:1;transform:scale(.2);border-width:10px}100%{opacity:0;transform:scale(4.6);border-width:1px}}
+.chestwrap.boom .shock{animation:shockOut .65s ease-out both}
+.chestwrap.boom .shock.s2{animation:shockOut .75s .1s ease-out both}
+.chestwrap .rays{left:50%;top:46%;width:230px;height:230px;margin:-115px 0 0 -115px;z-index:-1;
+ background:repeating-conic-gradient(rgba(255,236,140,.95) 0 7deg,rgba(255,236,140,0) 7deg 20deg);
+ -webkit-mask:radial-gradient(circle,#000 8%,transparent 70%);mask:radial-gradient(circle,#000 8%,transparent 70%)}
+@keyframes raysOut{0%{opacity:0;transform:scale(.4) rotate(0)}25%{opacity:1}100%{opacity:0;transform:scale(1.15) rotate(40deg)}}
+.chestwrap.boom .rays{animation:raysOut 1.1s ease-out both}
+.chestwrap .flash{left:50%;top:55%;width:150px;height:150px;margin:-75px 0 0 -75px;background:radial-gradient(circle,#fff 0,rgba(255,244,170,.85) 35%,rgba(255,220,90,0) 70%);z-index:2}
+@keyframes flashOut{0%{opacity:1;transform:scale(.3)}100%{opacity:0;transform:scale(1.5)}}
+.chestwrap.boom .flash{animation:flashOut .5s ease-out both}
+@keyframes scrShake{0%,100%{translate:0 0}20%{translate:-7px 4px}40%{translate:6px -5px}60%{translate:-4px 3px}80%{translate:3px -2px}}
+#main.shake{animation:scrShake .32s linear}
+@media (prefers-reduced-motion:reduce){.rocketBob,.wheelTick,.wheelWiggle,.letter,.logoWhole,.gift,.chestwrap.idle img{animation:none!important}}
 #toast{position:fixed;left:50%;bottom:20%;transform:translate(-50%,20px);background:rgba(20,10,80,.92);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:9}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 </style>
@@ -77,11 +160,11 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
   <img class="a" style="right:10px;top:-16px;width:106px" src="assets/09_history_scroll.webp" alt=""></button>
 
  <!-- hero -->
- <button class="a side press t" data-go="spin" style="left:0;top:282px"><img src="assets/10_spin_wheel.webp" alt=""><i class="dot"></i><div class="lbl">Spin</div></button>
+ <button class="a side press t" data-go="spin" id="spinBtn" style="left:0;top:282px"><div class="wheelwrap" id="wheelWrap"><img id="wheelImg" class="wheelimg wheelWiggle" src="assets/10_spin_wheel.webp" alt=""></div><i class="dot"></i><div class="lbl">Spin</div></button>
  <button class="a side press t" data-go="tutorials" style="left:0;top:400px"><img src="assets/12_tutorial_ticket.webp" alt=""><div class="lbl">Tutorials</div></button>
- <img class="a" style="left:148px;top:262px;width:420px" src="assets/01_play2win_logo.webp" alt="Play2Win">
- <button class="a side press t" data-go="daily" style="right:0;top:282px"><img src="assets/11_daily_bonus_chest.webp" alt=""><div class="lbl">Daily<br>Bonus</div></button>
- <button class="a side press t" data-go="firstpay" style="right:0;top:402px"><img src="assets/13_gift_box.webp" alt=""><div class="lbl">First Pay<br>pack</div></button>
+ <div id="logo"><img id="logoWhole" class="logoWhole" src="assets/01_play2win_logo.webp" alt="Play2Win"></div>
+ <button class="a side press t" data-go="daily" id="dailyBtn" style="right:0;top:282px"><div class="chestwrap idle" id="chestWrap"><i class="rays"></i><img id="chestImg" src="assets/11_daily_bonus_chest.webp" alt=""><i class="shock"></i><i class="shock s2"></i><i class="flash"></i></div><div class="lbl">Daily<br>Bonus</div></button>
+ <button class="a side press t" data-go="firstpay" style="right:0;top:402px"><img class="gift" src="assets/13_gift_box.webp" alt=""><div class="lbl">First Pay<br>pack</div></button>
 
  <!-- Fly & Dodge banner -->
  <button class="a glass press" data-go="flydodge" style="left:40px;top:527px;width:640px;height:248px;padding:10px;border-radius:40px">
@@ -90,7 +173,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
    <img class="a" style="left:225px;top:-125px;width:210px" src="assets/16_pipe_down.webp" alt="">
    <img class="a" style="left:40px;top:150px;width:200px" src="assets/15_pipe_up.webp" alt="">
    <img class="a" style="left:235px;top:140px;width:210px" src="assets/15_pipe_up.webp" alt="">
-   <img class="a" style="left:30px;top:40px;width:190px;transform:rotate(6deg)" src="assets/14_fly_dodge_rocket.webp" alt="">
+   <img class="a rocketBob" style="left:30px;top:40px;width:190px" src="assets/14_fly_dodge_rocket.webp" alt="">
    <img class="a" style="left:352px;top:-6px;width:268px" src="assets/17_fly_dodge_title.webp" alt="Fly & Dodge">
   </div>
  </button>
@@ -132,15 +215,82 @@ async function load(){
 }
 load();
 
+/* ---------- animation helpers ---------- */
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function loadImg(src){ return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; }); }
+function restart(el, cls){ el.classList.remove(cls); void el.offsetWidth; el.classList.add(cls); }
+
+/* Logo letters. Needs 9 transparent layers on the SAME canvas as 01_play2win_logo (assets/logo_*.webp).
+   If any is missing, the whole logo pops instead. */
+const LOGO_LAYERS = ['P','l','a','y','2','W','i','n','crown'];
+async function initLogo(){
+  const imgs = await Promise.all(LOGO_LAYERS.map(k => loadImg('assets/logo_' + k + '.webp')));
+  const baseImg = await loadImg('assets/logo_base.webp');   // static white sticker + shadow under the letters
+  if (imgs.some(x => !x)) return;                          // keep the whole-logo animation
+  const box = $('logo'); box.innerHTML = '';
+  if (baseImg) { const b = document.createElement('img'); b.src = baseImg.src; b.alt = ''; box.appendChild(b); }
+  imgs.forEach((im, idx) => {
+    const el = document.createElement('img'); el.src = im.src; el.alt = idx < 8 ? LOGO_LAYERS[idx] : ''; el.className = 'letter';
+    el.style.setProperty('--i', idx === 8 ? 4 : idx);      // crown pops with the middle letters
+    // pivot = centre of the visible pixels of this letter
+    try {
+      const c = document.createElement('canvas'), w = c.width = im.naturalWidth, h = c.height = im.naturalHeight;
+      const g = c.getContext('2d'); g.drawImage(im, 0, 0);
+      const d = g.getImageData(0, 0, w, h).data; let x0 = w, x1 = 0, y0 = h, y1 = 0;
+      for (let y = 0; y < h; y += 2) for (let x = 0; x < w; x += 2) if (d[(y * w + x) * 4 + 3] > 40) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+      if (x1 > x0) el.style.transformOrigin = ((x0 + x1) / 2 / w * 100) + '% ' + ((y0 + y1) / 2 / h * 100) + '%';
+    } catch (e) {}
+    box.appendChild(el);
+  });
+}
+$('logo').addEventListener('click', () => {                 // tap the logo: replay the wave
+  const els = document.querySelectorAll('#logo .letter, #logoWhole');
+  els.forEach(el => { el.style.animation = 'none'; }); void $('logo').offsetWidth; els.forEach(el => { el.style.animation = ''; });
+  haptic('light');
+});
+initLogo();
+
+/* Spin wheel: if the wheel and pointer are separate files the wheel turns by itself (stop-and-go) while the pointer stays upright */
+(async function initWheel(){
+  const [disc, ptr] = await Promise.all([loadImg('assets/spin_wheel_disc.webp'), loadImg('assets/spin_wheel_pointer.webp')]);
+  if (!disc || !ptr) return;                                // fallback keeps the wiggle
+  const wrap = $('wheelWrap'); wrap.innerHTML = '';
+  const d = document.createElement('img'); d.src = disc.src; d.className = 'wheelimg wheelTick'; d.alt = '';
+  const p = document.createElement('img'); p.src = ptr.src; p.className = 'ptr'; p.alt = '';
+  wrap.append(d, p); wrap.classList.add('run');
+})();
+
+/* Daily bonus chest: closed chest idles with wobble + squash. Tap -> stretch, slam, light + shockwave, opens. */
+const CHEST_OPEN = 'assets/11_daily_bonus_chest.webp', CHEST_CLOSED = 'assets/daily_chest_closed.webp';
+let chestClosedOK = false, chestBusy = false;
+loadImg(CHEST_CLOSED).then(im => { if (im) { chestClosedOK = true; $('chestImg').src = CHEST_CLOSED; } });
+async function openChest(){
+  if (chestBusy) return; chestBusy = true;
+  const w = $('chestWrap'), img = $('chestImg');
+  w.classList.remove('idle', 'boom', 'slam'); void w.offsetWidth; w.classList.add('slam');
+  haptic('medium');
+  await sleep(600);                                         // the moment the chest hits the ground
+  w.classList.add('boom'); img.src = CHEST_OPEN; haptic('heavy');
+  restart($('main'), 'shake');
+  await sleep(900);
+  toast('Daily bonus - coming soon');
+  await sleep(1600);
+  w.classList.remove('slam', 'boom'); if (chestClosedOK) img.src = CHEST_CLOSED; w.classList.add('idle');
+  chestBusy = false;
+}
+
+/* Tap feedback + navigation */
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-go]'); if(!b) return;
+  const go = b.dataset.go;
   haptic('light');
-  if (b.dataset.go === 'home') return;
-  if (b.dataset.go === 'flydodge') { location.href = 'duel.html' + location.search; return; }
-  if (b.dataset.go === 'bomb') { location.href = 'bombs.html' + location.search; return; }
-  if (b.dataset.go === 'cards') { location.href = 'lucky.html' + location.search; return; }
-  if (b.dataset.go === 'slot') { location.href = 'slots.html' + location.search; return; }
-  toast(b.dataset.go + ' - coming soon');
+  if (go === 'home') return;
+  if (go === 'daily') { openChest(); return; }
+  const sqEl = go === 'spin' ? $('wheelWrap') : b;
+  restart(sqEl, 'sq'); sqEl.addEventListener('animationend', ev => { if (ev.animationName === 'tapSquash') sqEl.classList.remove('sq'); }, { once: true });
+  const page = { flydodge: 'duel.html', bomb: 'bombs.html', cards: 'lucky.html', slot: 'slots.html' }[go];
+  if (page) { setTimeout(() => { location.href = page + location.search; }, 260); return; }
+  toast(go + ' - coming soon');
 });
 </script>
 </body>
