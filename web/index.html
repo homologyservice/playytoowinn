@@ -224,8 +224,8 @@ function restart(el, cls){ el.classList.remove(cls); void el.offsetWidth; el.cla
    If any is missing, the whole logo pops instead. */
 const LOGO_LAYERS = ['P','l','a','y','2','W','i','n','crown'];
 async function initLogo(){
-  const imgs = await Promise.all(LOGO_LAYERS.map(k => loadImg('assets/logo_' + k + '.webp')));
-  const baseImg = await loadImg('assets/logo_base.webp');   // static white sticker + shadow under the letters
+  const imgs = await Promise.all(LOGO_LAYERS.map(k => loadImg('assets/logo_' + k + '.webp?v=2')));
+  const baseImg = await loadImg('assets/logo_base.webp?v=2');   // static white sticker + shadow under the letters
   if (imgs.some(x => !x)) return;                          // keep the whole-logo animation
   const box = $('logo'); box.innerHTML = '';
   if (baseImg) { const b = document.createElement('img'); b.src = baseImg.src; b.alt = ''; box.appendChild(b); }
@@ -252,7 +252,7 @@ initLogo();
 
 /* Spin wheel: if the wheel and pointer are separate files the wheel turns by itself (stop-and-go) while the pointer stays upright */
 (async function initWheel(){
-  const [disc, ptr] = await Promise.all([loadImg('assets/spin_wheel_disc.webp'), loadImg('assets/spin_wheel_pointer.webp')]);
+  const [disc, ptr] = await Promise.all([loadImg('assets/spin_wheel_disc.webp?v=2'), loadImg('assets/spin_wheel_pointer.webp?v=2')]);
   if (!disc || !ptr) return;                                // fallback keeps the wiggle
   const wrap = $('wheelWrap'); wrap.innerHTML = '';
   const d = document.createElement('img'); d.src = disc.src; d.className = 'wheelimg wheelTick'; d.alt = '';
@@ -261,7 +261,7 @@ initLogo();
 })();
 
 /* Daily bonus chest: closed chest idles with wobble + squash. Tap -> stretch, slam, light + shockwave, opens. */
-const CHEST_OPEN = 'assets/11_daily_bonus_chest.webp', CHEST_CLOSED = 'assets/daily_chest_closed.webp';
+const CHEST_OPEN = 'assets/11_daily_bonus_chest.webp', CHEST_CLOSED = 'assets/daily_chest_closed.webp?v=2';
 let chestClosedOK = false, chestBusy = false;
 loadImg(CHEST_CLOSED).then(im => { if (im) { chestClosedOK = true; $('chestImg').src = CHEST_CLOSED; } });
 async function openChest(){

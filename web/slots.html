@@ -88,12 +88,17 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- reels: placed BEHIND the machine, exactly under its transparent window (stage x152-549, y547-785) -->
  <div id="reelView" style="left:152px;top:547px;width:397px;height:238px"></div>
  <!-- machine: its own gold frame covers the reel edges, so symbols look like they are inside -->
- <img class="a" src="assets/slot_machine_nolever.webp" style="left:20px;top:236px;width:680px" alt="">
- <img id="bulbA" class="a bulbs" src="assets/slot_bulbs_a.webp" style="left:20px;top:236px;width:680px" alt="">
- <img id="bulbB" class="a bulbs" src="assets/slot_bulbs_b.webp" style="left:20px;top:236px;width:680px" alt="">
- <img id="lever" class="a" src="assets/slot_lever.webp" style="left:20px;top:236px;width:680px" alt="">
+ <img id="machine" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_machine_nolever.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
+ <img id="bulbA" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_a.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
+ <img id="bulbB" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_b.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
+ <img id="lever" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
  <button id="leverBtn" class="a" aria-label="Pull lever" style="left:596px;top:498px;width:118px;height:220px;background:none;border:0;padding:0"></button>
  <div id="winline" class="winline a" style="left:160px;top:662px;width:380px;height:7px;border-radius:4px;z-index:2;background:linear-gradient(90deg,rgba(255,214,58,0),#ffd63a 12%,#fff6c2 50%,#ffd63a 88%,rgba(255,214,58,0));box-shadow:0 0 10px 2px rgba(255,214,58,.9),0 0 22px 4px rgba(255,190,40,.55)"></div>
+ <script>
+ /* if any of the new machine pieces fails to load, show the original one-piece machine instead of an empty window */
+ function machineFallback(){ var m=document.getElementById('machine'); if(!m||m.dataset.fb) return; m.dataset.fb=1; m.src='assets/slot_03_machine.webp';
+   ['bulbA','bulbB','lever','leverBtn'].forEach(function(i){var e=document.getElementById(i); if(e) e.style.display='none';}); }
+ </script>
  <div id="slotFx" class="a" style="left:0;top:0;width:720px;height:1400px;pointer-events:none;z-index:5"></div>
  <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:200px;top:516px;width:300px;height:300px" alt="">
 
@@ -159,8 +164,8 @@ fit(); addEventListener('resize', fit); addEventListener('orientationchange', fi
 
 const SYM_IMG = { seven: 'assets/slot_s1_seven.webp', bar: 'assets/slot_s2_bar.webp', cherry: 'assets/slot_s3_cherry.webp', bell: 'assets/slot_s4_bell.webp',
   diamond: 'assets/slot_s5_diamond.webp', horse: 'assets/slot_s6_horseshoe.webp', bag: 'assets/slot_s7_coinbag.webp', wild: 'assets/slot_s8_star_wild.webp' };
-const BLUR_IMG = { seven: 'assets/slot_symbol_blur_seven.webp', bar: 'assets/slot_symbol_blur_bar.webp', cherry: 'assets/slot_symbol_blur_cherry.webp', bell: 'assets/slot_symbol_blur_bell.webp',
-  diamond: 'assets/slot_symbol_blur_diamond.webp', horse: 'assets/slot_symbol_blur_horseshoe.webp', bag: 'assets/slot_symbol_blur_coinbag.webp', wild: 'assets/slot_symbol_blur_wildstar.webp' };
+const BLUR_IMG = { seven: 'assets/slot_symbol_blur_seven.webp?v=2', bar: 'assets/slot_symbol_blur_bar.webp?v=2', cherry: 'assets/slot_symbol_blur_cherry.webp?v=2', bell: 'assets/slot_symbol_blur_bell.webp?v=2',
+  diamond: 'assets/slot_symbol_blur_diamond.webp?v=2', horse: 'assets/slot_symbol_blur_horseshoe.webp?v=2', bag: 'assets/slot_symbol_blur_coinbag.webp?v=2', wild: 'assets/slot_symbol_blur_wildstar.webp?v=2' };
 const SYM_NAME = { seven: 'Lucky 7', bar: 'BAR', cherry: 'Cherry', bell: 'Bell', diamond: 'Diamond', horse: 'Horseshoe', bag: 'Coin bag', wild: 'WILD star' };
 const SYM_KEYS = ['seven', 'bar', 'diamond', 'horse', 'bell', 'bag', 'cherry', 'wild'];
 
@@ -257,7 +262,7 @@ function readBetInput() {   // typed value: check it is a whole number in range
 function paintSpin() {
   const can = !busy && !autoRun && coins >= bet;
   const pressed = busy && !autoRun;
-  $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : pressed ? 'assets/slot_spin_pressed.webp' : 'assets/slot_06_spin_disabled.webp';
+  $('spinImg').src = can ? 'assets/slot_05_spin_green.webp' : pressed ? 'assets/slot_spin_pressed.webp?v=2' : 'assets/slot_06_spin_disabled.webp';
   $('spin').disabled = !can; $('spinTxt').style.opacity = can || pressed ? 1 : .55; $('spinTxt').style.transform = pressed ? 'translateY(8px)' : '';
   $('autoTxt').textContent = autoRun ? 'STOP' : 'AUTO';
   $('auto').disabled = busy && !autoRun;

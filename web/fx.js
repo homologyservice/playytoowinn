@@ -2,7 +2,7 @@
    Every helper draws into a layer element that sits inside the stage and removes itself when it is done. */
 (function () {
   const FX = window.FX = {};
-  const A = n => 'assets/' + n + '.webp';
+  const A = n => 'assets/' + n + '.webp?v=2';
   const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   FX.pre = names => names.forEach(n => { const i = new Image(); i.src = A(n); });
   const rnd = (a, b) => a + Math.random() * (b - a);
