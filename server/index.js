@@ -19,6 +19,11 @@ const SWEEP_MS = 30 * 1000;      // how often the stale-run sweep may hit the da
 const START_COINS = 2500, START_HEARTS = 2;   // new users only
 const WAIT_MAX = 5;              // max "slots" a player may have open (waiting matches + prizes not yet claimed)
 const HISTORY_MAX = 10;          // history rows kept per player; the oldest finished row is deleted when an 11th arrives
+const DAILY_BONUS = 100;         // coins, once per calendar day
+const INVITE_REWARD = 2000;      // coins for the inviter, once per friend, after the friend has played a first game
+const SPIN_COST = 100;           // coins per extra spin (1 spin a day is free)
+const DAY_OFFSET_MIN = Number(process.env.DAY_OFFSET_MIN || 390);   // "a day" ends at local midnight: default Myanmar time (UTC+6:30)
+let BOT_USERNAME = process.env.BOT_USERNAME || '';
 
 // ---------- Database ----------
 const User = mongoose.model('User', new mongoose.Schema({
@@ -34,6 +39,14 @@ const User = mongoose.model('User', new mongoose.Schema({
   hearts: { type: Number, default: START_HEARTS },
   createdAt: { type: Date, default: Date.now },
   lastSeenAt: { type: Date, default: Date.now },
+  nameLen: { type: Number, default: 0 },                     // visible characters of `name` (ranking hides 1-letter names)
+  invitedBy: Number,                                         // tgId of the player whose invite link this player came through
+  qualifiedAt: Date,                                         // first time this player started a coin game (= invite becomes "completed")
+  inviteClaimed: { type: Boolean, default: false },          // the inviter has taken the invite reward for this player
+  plays: { type: Number, default: 0 },                       // games started (profile)
+  lastDaily: { type: String, default: '' },                  // day key of the last daily bonus
+  lastFreeSpin: { type: String, default: '' },               // day key of the last free daily spin
+  freeSpins: { type: Number, default: 0 },                   // spins won from the wheel
 }));
 
 const side = () => ({
@@ -84,12 +97,22 @@ function auth(req, res, next) {
 }
 
 // Everything Telegram tells us about the player is stored: numeric id + @username + names.
+const seg = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+const graphemes = (str) => (seg ? Array.from(seg.segment(String(str || '')), (x) => x.segment) : Array.from(String(str || '')));   // Burmese/emoji safe
+function maskName(name) {          // last 3 characters -> ***; 3 or fewer -> all stars; 1 character -> not shown at all (null)
+  const g = graphemes(name);
+  if (g.length <= 1) return null;
+  if (g.length <= 3) return '*'.repeat(g.length);
+  return g.slice(0, g.length - 3).join('') + '***';
+}
+const dayKey = (t = Date.now()) => new Date(t + DAY_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+const nextDayAt = () => { const d = new Date(Date.now() + DAY_OFFSET_MIN * 60000); d.setUTCHours(24, 0, 0, 0); return d.getTime() - DAY_OFFSET_MIN * 60000; };
 function identity(tgUser) {
   const firstName = String(tgUser.first_name || '').trim().slice(0, 64);
   const lastName = String(tgUser.last_name || '').trim().slice(0, 64);
   const username = String(tgUser.username || '').trim().replace(/^@/, '').slice(0, 64);
   const name = ([firstName, lastName].filter(Boolean).join(' ') || username || 'Player').slice(0, 32);
-  return { firstName, lastName, username, usernameLower: username.toLowerCase(), name,
+  return { firstName, lastName, username, usernameLower: username.toLowerCase(), name, nameLen: graphemes(name).length,
            languageCode: String(tgUser.language_code || '').slice(0, 10), isPremium: !!tgUser.is_premium };
 }
 async function upsertUser(tgUser) {
@@ -106,10 +129,25 @@ async function upsertUser(tgUser) {
 // ---------- Bot ----------
 const bot = new Telegraf(BOT_TOKEN);
 bot.catch((err) => console.error('bot error', err));
-bot.start((ctx) => {
-  if (ctx.from && !ctx.from.is_bot) upsertUser(ctx.from).catch((e) => console.error('upsert on /start failed', e));
+bot.start(async (ctx) => {
+  if (ctx.from && !ctx.from.is_bot) {
+    try {
+      const existed = await User.exists({ tgId: ctx.from.id });
+      await upsertUser(ctx.from);
+      const m = /^inv_(\d{1,15})$/.exec(String(ctx.startPayload || ''));
+      // only a brand-new player can be invited, never yourself, and only by a player that exists
+      if (!existed && m) {
+        const inviter = Number(m[1]);
+        if (inviter !== ctx.from.id && await User.exists({ tgId: inviter })) {
+          await User.updateOne({ tgId: ctx.from.id, invitedBy: { $exists: false } }, { $set: { invitedBy: inviter } });
+        }
+      }
+    } catch (e) { console.error('start failed', e); }
+  }
   return ctx.reply('ကြိုဆိုပါတယ်', Markup.inlineKeyboard([Markup.button.webApp('ဂိမ်းထဲဝင်ရန်', WEBAPP_URL)]));
 });
+// A player has "played" once a coin game was started: counts for the profile and completes an invite.
+const qualify = (uid) => { User.updateOne({ tgId: uid }, { $inc: { plays: 1 }, $min: { qualifiedAt: new Date() } }).catch((e) => console.error('qualify failed', e)); };
 const notify = (tgId, text) => bot.telegram.sendMessage(tgId, text).catch(() => {});
 
 // ---------- Small helpers ----------
@@ -266,6 +304,7 @@ app.post('/api/duel/start', auth, async (req, res) => {
 
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: FEE } }, { $inc: { coins: -FEE } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      qualify(uid);
 
       try {
         const now = new Date();
@@ -482,6 +521,7 @@ app.post('/api/bomb/start', auth, async (req, res) => {
       if (open) return res.status(409).json({ error: 'round_active', round: bombView(open) });
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: entry } }, { $inc: { coins: -entry } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      qualify(uid);
       try {
         const r = await BombRound.create({ tgId: uid, entry, bombs, mines: bombShuffle(BOMB_TILES, bombs) });
         res.json({ coins: paid.coins, round: bombView(r) });
@@ -619,6 +659,7 @@ app.post('/api/lucky/play', auth, async (req, res) => {
       if (open) return res.status(409).json({ error: 'round_active', round: luckyView(open) });
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      qualify(uid);
       try {
         const r = await LuckyRound.create({ tgId: uid, bet, deck: luckyShuffle(LUCKY_DECK.slice()) });
         res.json({ coins: paid.coins, round: luckyView(r) });
@@ -715,6 +756,7 @@ app.post('/api/slots/spin', auth, async (req, res) => {
       await slotPayPending(uid);
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
+      qualify(uid);
       const stops = [0, 1, 2].map(() => crypto.randomInt(SlotMath.STRIP_LEN));
       const { mult, sym } = SlotMath.evaluate(stops);
       const win = bet * mult;
@@ -732,6 +774,162 @@ app.post('/api/slots/spin', auth, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+
+// =====================================================================
+//  DAILY BONUS: 100 coins, once per calendar day (day = local midnight, see DAY_OFFSET_MIN)
+// =====================================================================
+app.get('/api/daily/state', auth, async (req, res) => {
+  try {
+    const u = await upsertUser(req.tg);
+    res.json({ coins: u.coins, amount: DAILY_BONUS, available: u.lastDaily !== dayKey(), nextAt: nextDayAt() });
+  } catch (e) { fail(res, e); }
+});
+app.post('/api/daily/claim', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    await upsertUser(req.tg);
+    // one atomic update: it only matches while today's bonus has not been taken, so two taps can never pay twice
+    const u = await User.findOneAndUpdate({ tgId: uid, lastDaily: { $ne: dayKey() } }, { $set: { lastDaily: dayKey() }, $inc: { coins: DAILY_BONUS } }, { new: true });
+    if (!u) { const cur = await User.findOne({ tgId: uid }); return res.status(409).json({ error: 'already_claimed', coins: cur ? cur.coins : 0, nextAt: nextDayAt() }); }
+    res.json({ amount: DAILY_BONUS, coins: u.coins, nextAt: nextDayAt() });
+  } catch (e) { fail(res, e); }
+});
+
+// =====================================================================
+//  SPIN WHEEL. The server picks the prize (the page only animates it).
+//  1 free spin a day, then SPIN_COST coins. "free" prize = one more free spin.
+//  Wheel order = clockwise from the top. Chances are per mille and do NOT depend on the wedge size.
+// =====================================================================
+const SPIN_WEDGES = [{ k: 'coins', v: 100 }, { k: 'try' }, { k: 'coins', v: 200 }, { k: 'free' }, { k: 'coins', v: 300 }, { k: 'try' }, { k: 'coins', v: 250 }, { k: 'coins', v: 500 }];
+const SPIN_ODDS = [{ k: 'try', w: 500 }, { k: 'free', w: 100 }, { k: 'coins', v: 100, w: 180 }, { k: 'coins', v: 200, w: 100 }, { k: 'coins', v: 250, w: 50 }, { k: 'coins', v: 300, w: 45 }, { k: 'coins', v: 500, w: 25 }];   // sums to 1000
+// expected return per paid spin = (0.18*100 + 0.10*200 + 0.05*250 + 0.045*300 + 0.025*500) / (1 - 0.10 free) = 85 coins for a 100-coin spin
+const spinSchema = new mongoose.Schema({
+  tgId: { type: Number, required: true }, source: String, kind: String, amount: { type: Number, default: 0 }, wedge: Number,
+  unpaid: { type: Boolean, default: false }, createdAt: { type: Date, default: Date.now },
+});
+spinSchema.index({ tgId: 1, createdAt: -1 });
+const SpinLog = mongoose.model('SpinLog', spinSchema);
+async function spinPay(rowId, uid, kind, amount) {   // credits exactly once, safe to call again
+  const g = await SpinLog.updateOne({ _id: rowId, unpaid: true }, { $set: { unpaid: false } });
+  if (!g.modifiedCount) return;
+  const inc = kind === 'free' ? { freeSpins: 1 } : { coins: amount };
+  try { await User.updateOne({ tgId: uid }, { $inc: inc }); }
+  catch (e) { await SpinLog.updateOne({ _id: rowId }, { $set: { unpaid: true } }); throw e; }
+}
+async function spinPayPending(uid) {
+  const rows = await SpinLog.find({ tgId: uid, unpaid: true });
+  for (const r of rows) await spinPay(r._id, uid, r.kind, r.amount);
+}
+const spinView = (u) => ({ coins: u.coins, freeSpins: u.freeSpins || 0, freeAvailable: u.lastFreeSpin !== dayKey(), nextFreeAt: nextDayAt(), cost: SPIN_COST });
+app.get('/api/spin/state', auth, async (req, res) => {
+  try {
+    await upsertUser(req.tg); await spinPayPending(req.tg.id);
+    const u = await User.findOne({ tgId: req.tg.id });
+    res.json({ ...spinView(u), wedges: SPIN_WEDGES });
+  } catch (e) { fail(res, e); }
+});
+app.post('/api/spin/play', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    await withLock('p' + uid, async () => {
+      await upsertUser(req.tg); await spinPayPending(uid);
+      let source = 'bonus';
+      let u = await User.findOneAndUpdate({ tgId: uid, freeSpins: { $gt: 0 } }, { $inc: { freeSpins: -1 } }, { new: true });      // 1) a spin won earlier
+      if (!u) {
+        source = 'daily';
+        u = await User.findOneAndUpdate({ tgId: uid, lastFreeSpin: { $ne: dayKey() } }, { $set: { lastFreeSpin: dayKey() } }, { new: true });   // 2) today's free spin
+      }
+      if (!u) {
+        source = 'paid';
+        u = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: SPIN_COST } }, { $inc: { coins: -SPIN_COST } }, { new: true });           // 3) pay
+        if (!u) return res.status(402).json({ error: 'not_enough_coins' });
+      }
+      const undo = () => (source === 'paid' ? User.updateOne({ tgId: uid }, { $inc: { coins: SPIN_COST } })
+        : source === 'daily' ? User.updateOne({ tgId: uid }, { $set: { lastFreeSpin: '' } }) : User.updateOne({ tgId: uid }, { $inc: { freeSpins: 1 } }));
+      let row, prize;
+      try {
+        let r = crypto.randomInt(1000); prize = SPIN_ODDS[SPIN_ODDS.length - 1];
+        for (const o of SPIN_ODDS) { if (r < o.w) { prize = o; break; } r -= o.w; }
+        const slots = SPIN_WEDGES.map((w, i) => i).filter((i) => SPIN_WEDGES[i].k === prize.k && (prize.k !== 'coins' || SPIN_WEDGES[i].v === prize.v));
+        const wedge = slots[crypto.randomInt(slots.length)];
+        const amount = prize.k === 'coins' ? prize.v : 0;
+        row = await SpinLog.create({ tgId: uid, source, kind: prize.k, amount, wedge, unpaid: prize.k !== 'try' });
+        if (prize.k !== 'try') { try { await spinPay(row._id, uid, prize.k, amount); } catch (e) { console.error('spin payout pending, will retry', e); } }
+        const me = await User.findOne({ tgId: uid });
+        return res.json({ wedge, kind: prize.k, amount, source, ...spinView(me) });
+      } catch (e) { if (!row) await undo(); throw e; }   // never keep the cost if the spin could not be saved
+    });
+  } catch (e) { fail(res, e); }
+});
+
+// =====================================================================
+//  INVITES. Link = https://t.me/<bot>?start=inv_<your id>.
+//  pending   = the friend opened the bot through your link
+//  completed = the friend has started their first coin game (see qualify())  -> you can claim INVITE_REWARD once
+// =====================================================================
+app.get('/api/invites/state', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    const me = await upsertUser(req.tg);
+    const kids = await User.find({ invitedBy: uid }).sort({ createdAt: -1 }).limit(200).select('tgId name createdAt qualifiedAt inviteClaimed').lean();
+    const pending = kids.filter((k) => !k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, at: new Date(k.createdAt).getTime() }));
+    const completed = kids.filter((k) => k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, claimed: !!k.inviteClaimed, at: new Date(k.qualifiedAt).getTime() }));
+    res.json({ coins: me.coins, reward: INVITE_REWARD, link: BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=inv_${uid}` : null, pending, completed });
+  } catch (e) { fail(res, e); }
+});
+app.post('/api/invites/claim', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, kid = Number(req.body && req.body.id);
+    if (!Number.isSafeInteger(kid)) return res.status(400).json({ error: 'bad_request' });
+    await withLock('i' + uid, async () => {
+      // the flag is flipped first, atomically, so a double tap can only pay once
+      const g = await User.findOneAndUpdate({ tgId: kid, invitedBy: uid, qualifiedAt: { $ne: null }, inviteClaimed: { $ne: true } }, { $set: { inviteClaimed: true } });
+      if (!g) return res.status(409).json({ error: 'nothing_to_claim' });
+      let me;
+      try { me = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: INVITE_REWARD } }, { new: true }); if (!me) throw new Error('no user'); }
+      catch (e) { await User.updateOne({ tgId: kid }, { $set: { inviteClaimed: false } }); throw e; }
+      res.json({ amount: INVITE_REWARD, coins: me.coins });
+    });
+  } catch (e) { fail(res, e); }
+});
+
+// =====================================================================
+//  RANKING (most coins). Names are masked on the server: the full name never leaves it.
+// =====================================================================
+let rankCache = { at: 0, rows: [] };
+async function topRows() {
+  if (Date.now() - rankCache.at < 15000) return rankCache.rows;
+  const rows = await User.find({ nameLen: { $gt: 1 } }).sort({ coins: -1 }).limit(50).select('tgId name coins').lean();
+  rankCache = { at: Date.now(), rows: rows.map((r, i) => ({ rank: i + 1, tg: r.tgId, name: maskName(r.name), coins: r.coins })) };
+  return rankCache.rows;
+}
+app.get('/api/ranking', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    const me = await upsertUser(req.tg);
+    const rows = await topRows();
+    const rank = (await User.countDocuments({ nameLen: { $gt: 1 }, coins: { $gt: me.coins } })) + 1;
+    res.json({ items: rows.map((r) => ({ rank: r.rank, name: r.name, coins: r.coins, me: r.tg === uid })),
+      me: { rank, coins: me.coins, name: me.name, listed: me.nameLen > 1 } });
+  } catch (e) { fail(res, e); }
+});
+
+// =====================================================================
+//  PROFILE
+// =====================================================================
+app.get('/api/profile', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id;
+    const me = await upsertUser(req.tg);
+    const [rank, invited, completed] = await Promise.all([
+      User.countDocuments({ nameLen: { $gt: 1 }, coins: { $gt: me.coins } }).then((n) => n + 1),
+      User.countDocuments({ invitedBy: uid }),
+      User.countDocuments({ invitedBy: uid, qualifiedAt: { $ne: null } }),
+    ]);
+    res.json({ id: uid, name: me.name, username: me.username, coins: me.coins, hearts: me.hearts, rank, plays: me.plays || 0, invited, completed, since: new Date(me.createdAt).getTime() });
+  } catch (e) { fail(res, e); }
+});
+
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
@@ -742,6 +940,9 @@ process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
 
 async function main() {
   await mongoose.connect(MONGODB_URI);
+  User.collection.createIndex({ nameLen: 1, coins: -1 }).catch((e) => console.error('index', e));
+  User.collection.createIndex({ invitedBy: 1, createdAt: -1 }, { sparse: true }).catch((e) => console.error('index', e));
+  bot.telegram.getMe().then((me) => { if (!BOT_USERNAME) BOT_USERNAME = me.username || ''; }).catch((e) => console.error('getMe failed', e));
   if (RENDER_EXTERNAL_URL) {
     const path = '/tg/' + crypto.createHash('sha256').update(BOT_TOKEN).digest('hex').slice(0, 24);
     app.use(bot.webhookCallback(path));
