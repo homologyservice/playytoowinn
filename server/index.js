@@ -307,6 +307,56 @@ const imgKind = (b) => (b.length > 12 && b[0] === 0xff && b[1] === 0xd8 && b[2] 
   : b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP' ? 'webp' : null);
 const depView = (d) => ({ id: String(d._id), admin: d.admin, amount: d.finalAmount || d.amount, status: d.status, at: new Date(d.createdAt).getTime() });
 
+
+// ----- how the screenshot reaches the admin -----
+// 1) The picture is kept for a few days under a secret address and Telegram is asked to fetch it itself (a plain JSON call, like a text message).
+//    This avoids uploading a file from this server, which hung on some hosts.
+// 2) If that does not work, the file is uploaded directly with Node's own fetch/FormData.
+const PUBLIC_URL = String(process.env.PUBLIC_URL || RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+const shotSchema = new mongoose.Schema({ depId: mongoose.Schema.Types.ObjectId, token: { type: String, unique: true }, mime: String, data: Buffer, createdAt: { type: Date, default: Date.now, expires: 7 * 86400 } });
+const DepositShot = mongoose.model('DepositShot', shotSchema);
+const MIME = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+app.get('/api/deposit/shot/:file', async (req, res) => {
+  try {
+    const token = String(req.params.file || '').replace(/\.\w{2,4}$/, '');
+    if (!/^[a-f0-9]{48}$/.test(token)) return res.sendStatus(404);
+    const row = await DepositShot.findOne({ token });
+    if (!row) return res.sendStatus(404);
+    res.set({ 'Content-Type': row.mime, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' }).send(row.data);
+  } catch (e) { fail(res, e); }
+});
+const NO_CHAT = /chat not found|can't initiate|blocked by the user|user is deactivated|forbidden/i;
+async function uploadPhotoDirect(chatId, buf, kind, caption, markup) {
+  if (typeof fetch !== 'function' || typeof FormData === 'undefined' || typeof Blob === 'undefined') throw new Error('no_native_fetch');
+  const fd = new FormData();
+  fd.append('chat_id', String(chatId)); fd.append('caption', caption); fd.append('parse_mode', 'HTML'); fd.append('reply_markup', JSON.stringify(markup));
+  fd.append('photo', new Blob([buf], { type: MIME[kind] }), 'screenshot.' + (kind === 'jpeg' ? 'jpg' : kind));
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 30000);
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, { method: 'POST', body: fd, signal: ac.signal });
+    const j = await r.json();
+    if (!j.ok) throw new Error(j.description || 'telegram_error');
+    return j.result;
+  } catch (e) { throw new Error(e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || 'upload_failed'); }
+  finally { clearTimeout(t); }
+}
+async function sendShotToAdmin(adminId, depId, buf, kind, caption, markup) {
+  if (PUBLIC_URL) {
+    try {
+      const token = crypto.randomBytes(24).toString('hex');
+      await DepositShot.create({ depId, token, mime: MIME[kind], data: buf });
+      const sent = await withTimeout(bot.telegram.sendPhoto(adminId, `${PUBLIC_URL}/api/deposit/shot/${token}.jpg`, { caption, parse_mode: 'HTML', reply_markup: markup }), 20000);
+      console.log('deposit: delivered to admin (by link)');
+      return sent;
+    } catch (e) {
+      console.error('deposit: send by link failed:', e && e.message);
+      if (NO_CHAT.test((e && e.message) || '')) throw e;          // the admin never pressed /start: uploading will not help
+    }
+  }
+  const sent = await uploadPhotoDirect(adminId, buf, kind, caption, markup);
+  console.log('deposit: delivered to admin (uploaded)');
+  return sent;
+}
 app.get('/api/deposit/config', auth, (req, res) => {
   res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id })),
     min: DEPOSIT_MIN, max: DEPOSIT_MAX, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
@@ -337,17 +387,16 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
       const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nUsername typed: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
       console.log('deposit: sending screenshot', Math.round(buf.length / 1024) + 'KB', 'player', uid, 'admin', adm.key);
       try {
-        const sent = await withTimeout(bot.telegram.sendPhoto(adm.id, { source: buf, filename: 'screenshot.' + (kind === 'jpeg' ? 'jpg' : kind) }, {
-          caption, parse_mode: 'HTML',
-          reply_markup: { inline_keyboard: [[{ text: `✅ Confirm ${amount}`, callback_data: 'dep:ok:' + d._id }, { text: '❌ Reject', callback_data: 'dep:no:' + d._id }], [{ text: '✏️ Edit amount', callback_data: 'dep:edit:' + d._id }]] },
-        }), 25000);
-        console.log('deposit: delivered to admin', adm.key);
+        const markup = { inline_keyboard: [[{ text: `✅ Confirm ${amount}`, callback_data: 'dep:ok:' + d._id }, { text: '❌ Reject', callback_data: 'dep:no:' + d._id }], [{ text: '✏️ Edit amount', callback_data: 'dep:edit:' + d._id }]] };
+        const sent = await sendShotToAdmin(adm.id, d._id, buf, kind, caption, markup);
         const ph = sent.photo && sent.photo[sent.photo.length - 1];
         await Deposit.updateOne({ _id: d._id }, { $set: { adminChat: sent.chat.id, adminMsg: sent.message_id, shotId: ph ? ph.file_id : '' } });
       } catch (e) {
-        console.error('deposit: admin not reachable', e && e.message);
+        console.error('deposit: admin not reachable:', e && e.message);
         await Deposit.updateOne({ _id: d._id }, { $set: { status: 'failed' } });
-        return res.status(e && e.message === 'timeout' ? 504 : 502).json({ error: e && e.message === 'timeout' ? 'admin_timeout' : 'admin_unreachable' });
+        await DepositShot.deleteMany({ depId: d._id }).catch(() => {});
+        const timeout = e && e.message === 'timeout';
+        return res.status(timeout ? 504 : 502).json({ error: timeout ? 'admin_timeout' : 'admin_unreachable' });
       }
       res.json({ ok: true, id: String(d._id) });
     });
@@ -360,6 +409,7 @@ async function settleDeposit(id, status, amount) {   // flips pending -> approve
   const set = { status, decidedAt: new Date(), awaitingEdit: false }; if (status === 'approved') set.finalAmount = amount;
   const d = await Deposit.findOneAndUpdate({ _id: id, status: 'pending' }, { $set: set }, { new: true });
   if (!d) return null;
+  DepositShot.deleteMany({ depId: d._id }).catch(() => {});
   if (status === 'approved') {
     try { await User.updateOne({ tgId: d.tgId }, { $inc: { coins: amount } }); }
     catch (e) { await Deposit.updateOne({ _id: d._id }, { $set: { status: 'pending' } }); throw e; }
