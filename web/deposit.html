@@ -173,9 +173,9 @@ $('pvRm').onclick = () => { shotData = null; $('file').value = ''; $('shot').cla
 async function prep(file) {
   const url = URL.createObjectURL(file);
   const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
-  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const k = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
   const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
-  let q = .86, d; do { d = c.toDataURL('image/jpeg', q); q -= .1; } while (d.length > 5.5e6 && q > .3);
+  let q = .8, d; do { d = c.toDataURL('image/jpeg', q); q -= .1; } while (d.length > 2.5e6 && q > .3);
   return d;
 }
 $('file').onchange = async () => {
@@ -191,14 +191,14 @@ $('file').onchange = async () => {
 };
 
 const ERR = { admin_unavailable: 'This admin is not available right now', admin_unreachable: 'Could not reach the admin. Please message the admin and try again.', too_many_pending: 'You already have 3 requests waiting. Please wait for the admin.',
-  bad_amount: 'Check the coin amount', bad_username: 'Enter a username', bad_image: 'Please attach a valid screenshot', image_too_small: 'The picture is too small', image_too_big: 'The picture is too big' };
+  bad_amount: 'Check the coin amount', bad_username: 'Enter a username', bad_image: 'Please attach a valid screenshot', image_too_small: 'The picture is too small', image_too_big: 'The picture is too big', admin_timeout: 'The admin could not be reached in time. Please message the admin and try again.' };
 $('submit').onclick = async () => {
   if (busy) return; busy = true; check(); $('submit').textContent = 'SENDING…';
   try {
     await api.depositSubmit({ admin: admin.key, username: $('inUser').value.trim(), amount: amt(), image: shotData });
     $('doneScrim').classList.add('on'); $('done').classList.add('on'); haptic('success');
     $('inUser').value = ''; $('inAmt').value = ''; $('pvRm').click(); loadMine();
-  } catch (e) { toast(ERR[e.message] || 'Could not send, please try again'); }
+  } catch (e) { toast(ERR[e.message] || (e.message === 'timeout' ? 'The server took too long. Check your connection and try again.' : 'Could not send, please try again')); }
   busy = false; $('submit').textContent = 'SUBMIT'; check();
 };
 $('doneBtn').onclick = () => { $('done').classList.remove('on'); $('doneScrim').classList.remove('on'); wrap.scrollTo({ top: 0, behavior: 'smooth' }); };

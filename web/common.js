@@ -30,15 +30,22 @@ function fitStage(el) {
 const API_URL = (window.P2W_API || '').replace(/\/$/, '');
 const LIVE = !!(API_URL && !API_URL.includes('YOUR-SERVER') && tg && tg.initData) && !Q.get('demo');
 
-async function call(path, body) {
-  const r = await fetch(API_URL + path, {
-    method: body ? 'POST' : 'GET',
-    headers: { 'Content-Type': 'application/json', 'x-init-data': tg.initData },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) { const err = new Error(j.error || 'network_error'); err.data = j; throw err; }
-  return j;
+async function call(path, body, timeoutMs) {
+  const ac = new AbortController(), timer = setTimeout(() => ac.abort(), timeoutMs || 30000);   // never wait forever
+  try {
+    const r = await fetch(API_URL + path, {
+      method: body ? 'POST' : 'GET',
+      headers: { 'Content-Type': 'application/json', 'x-init-data': tg.initData },
+      body: body ? JSON.stringify(body) : undefined,
+      signal: ac.signal,
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { const err = new Error(j.error || 'network_error'); err.data = j; throw err; }
+    return j;
+  } catch (e) {
+    if (e && e.name === 'AbortError') throw new Error('timeout');
+    throw e;
+  } finally { clearTimeout(timer); }
 }
 
 /* Bomb Points rules (the server is the source of truth; these are for display + demo mode) */
@@ -307,7 +314,7 @@ const api = LIVE ? {
   profile: () => call('/api/profile'),
   depositConfig: () => call('/api/deposit/config'),
   depositMine: () => call('/api/deposit/mine'),
-  depositSubmit: b => call('/api/deposit/submit', b),
+  depositSubmit: b => call('/api/deposit/submit', b, 60000),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */
@@ -324,5 +331,13 @@ if (!LIVE) addEventListener('DOMContentLoaded', () => {
   document.body.appendChild(d);
 });
 
-/* If an image file is missing on the server, hide it instead of showing the browser's broken-image icon. Add data-keep to an <img> that has its own fallback. */
-addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && !t.hasAttribute('data-keep')) t.style.visibility = 'hidden'; }, true);
+/* Pictures that fail to load: try ONCE more with a fresh URL (a phone can remember an old 404), then hide them instead of showing the browser's broken-image box.
+   Add data-keep to an <img> that has its own fallback. Also covers pictures that failed before this script ran. */
+function _fixImg(i) {
+  if (i.hasAttribute('data-keep') || !i.getAttribute('src')) return;
+  if (!i.dataset.retry) { i.dataset.retry = '1'; i.src = i.src.split('?')[0] + '?r=' + Date.now(); } else i.style.visibility = 'hidden';
+}
+addEventListener('error', e => { if (e.target && e.target.tagName === 'IMG') _fixImg(e.target); }, true);
+addEventListener('load', e => { const t = e.target; if (t && t.tagName === 'IMG' && t.style.visibility === 'hidden') { t.style.visibility = ''; delete t.dataset.retry; } }, true);
+function _sweepImgs() { document.querySelectorAll('img').forEach(i => { if (i.complete && i.naturalWidth === 0) _fixImg(i); }); }
+document.addEventListener('DOMContentLoaded', _sweepImgs); addEventListener('load', () => { _sweepImgs(); setTimeout(_sweepImgs, 2000); });
