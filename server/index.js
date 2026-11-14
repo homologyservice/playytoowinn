@@ -275,6 +275,138 @@ async function forfeitActive(uid) {
 // ---------- API ----------
 const app = express();
 app.use(cors({ origin: WEBAPP_URL.replace(/\/$/, ''), allowedHeaders: ['Content-Type', 'x-init-data'] }));
+
+// =====================================================================
+//  COIN TOP-UP through an admin. The player talks to the admin, then sends a screenshot here.
+//  The admin gets the screenshot in Telegram with buttons: Confirm / Reject / Edit amount.
+//  Coins are ALWAYS credited to the player who sent the request (the typed username is only shown to the admin).
+//  Set ADMIN1_ID / ADMIN2_ID (Telegram user ids; each admin must have pressed /start in the bot once).
+// =====================================================================
+const envAdmin = (n) => ({ key: String(n), id: Number(process.env['ADMIN' + n + '_ID'] || 0), name: process.env['ADMIN' + n + '_NAME'] || ('Admin ' + n),
+  username: String(process.env['ADMIN' + n + '_USERNAME'] || '').replace(/^@/, '') });
+const ADMINS = { 1: envAdmin(1), 2: envAdmin(2) };
+const DEPOSIT_MIN = Number(process.env.DEPOSIT_MIN || 100), DEPOSIT_MAX = Number(process.env.DEPOSIT_MAX || 1000000);
+const SHOT_MIN_KB = 50, SHOT_MAX_MB = 5;                 // what the page tells the player (checked on the original file in the page)
+const SHOT_FLOOR_BYTES = 10 * 1024, SHOT_CEIL_BYTES = 6 * 1024 * 1024;   // hard limits the server enforces on the uploaded (already compressed) image
+const MAX_PENDING_DEPOSITS = 3;
+const depositSchema = new mongoose.Schema({
+  tgId: { type: Number, required: true }, admin: { type: Number, required: true }, username: String,
+  amount: { type: Number, required: true }, finalAmount: Number,
+  status: { type: String, default: 'pending' },          // pending | approved | rejected | failed
+  awaitingEdit: { type: Boolean, default: false },
+  adminChat: Number, adminMsg: Number, shotId: String,
+  createdAt: { type: Date, default: Date.now }, decidedAt: Date,
+});
+depositSchema.index({ tgId: 1, createdAt: -1 });
+depositSchema.index({ admin: 1, awaitingEdit: 1 });
+const Deposit = mongoose.model('Deposit', depositSchema);
+const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const clean = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
+const imgKind = (b) => (b.length > 12 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'jpeg' : b.length > 12 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 ? 'png'
+  : b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP' ? 'webp' : null);
+const depView = (d) => ({ id: String(d._id), admin: d.admin, amount: d.finalAmount || d.amount, status: d.status, at: new Date(d.createdAt).getTime() });
+
+app.get('/api/deposit/config', auth, (req, res) => {
+  res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id })),
+    min: DEPOSIT_MIN, max: DEPOSIT_MAX, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
+});
+app.get('/api/deposit/mine', auth, async (req, res) => {
+  try { const rows = await Deposit.find({ tgId: req.tg.id, status: { $ne: 'failed' } }).sort({ createdAt: -1 }).limit(5); res.json({ items: rows.map(depView) }); }
+  catch (e) { fail(res, e); }
+});
+// own, bigger body limit (the screenshot travels as base64); the global 10kb parser below never sees this route
+app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req, res) => {
+  try {
+    const uid = req.tg.id, b = req.body || {};
+    const adm = ADMINS[Number(b.admin)];
+    if (!adm || !adm.id) return res.status(503).json({ error: 'admin_unavailable' });
+    const amount = Number(b.amount), username = clean(b.username, 64);
+    if (!Number.isSafeInteger(amount) || amount < DEPOSIT_MIN || amount > DEPOSIT_MAX) return res.status(400).json({ error: 'bad_amount' });
+    if (!username) return res.status(400).json({ error: 'bad_username' });
+    const m = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.image || ''));
+    if (!m) return res.status(400).json({ error: 'bad_image' });
+    const buf = Buffer.from(m[1], 'base64');
+    if (buf.length < SHOT_FLOOR_BYTES) return res.status(400).json({ error: 'image_too_small' });
+    if (buf.length > SHOT_CEIL_BYTES) return res.status(413).json({ error: 'image_too_big' });
+    const kind = imgKind(buf); if (!kind) return res.status(400).json({ error: 'bad_image' });
+    await withLock('dep' + uid, async () => {
+      const me = await upsertUser(req.tg);
+      if (await Deposit.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_DEPOSITS) return res.status(429).json({ error: 'too_many_pending' });
+      const d = await Deposit.create({ tgId: uid, admin: adm.key ? Number(adm.key) : 1, username, amount });
+      const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nUsername typed: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
+      try {
+        const sent = await bot.telegram.sendPhoto(adm.id, { source: buf, filename: 'screenshot.' + (kind === 'jpeg' ? 'jpg' : kind) }, {
+          caption, parse_mode: 'HTML',
+          reply_markup: { inline_keyboard: [[{ text: `✅ Confirm ${amount}`, callback_data: 'dep:ok:' + d._id }, { text: '❌ Reject', callback_data: 'dep:no:' + d._id }], [{ text: '✏️ Edit amount', callback_data: 'dep:edit:' + d._id }]] },
+        });
+        const ph = sent.photo && sent.photo[sent.photo.length - 1];
+        await Deposit.updateOne({ _id: d._id }, { $set: { adminChat: sent.chat.id, adminMsg: sent.message_id, shotId: ph ? ph.file_id : '' } });
+      } catch (e) {
+        console.error('deposit: admin not reachable', e && e.message);
+        await Deposit.updateOne({ _id: d._id }, { $set: { status: 'failed' } });
+        return res.status(502).json({ error: 'admin_unreachable' });
+      }
+      res.json({ ok: true, id: String(d._id) });
+    });
+  } catch (e) { fail(res, e); }
+});
+
+// ----- admin buttons (only the chosen admin can use them) -----
+const adminOk = (d, from) => d && ADMINS[d.admin] && ADMINS[d.admin].id && ADMINS[d.admin].id === from;
+async function settleDeposit(id, status, amount) {   // flips pending -> approved/rejected exactly once, then credits
+  const set = { status, decidedAt: new Date(), awaitingEdit: false }; if (status === 'approved') set.finalAmount = amount;
+  const d = await Deposit.findOneAndUpdate({ _id: id, status: 'pending' }, { $set: set }, { new: true });
+  if (!d) return null;
+  if (status === 'approved') {
+    try { await User.updateOne({ tgId: d.tgId }, { $inc: { coins: amount } }); }
+    catch (e) { await Deposit.updateOne({ _id: d._id }, { $set: { status: 'pending' } }); throw e; }
+  }
+  return d;
+}
+async function afterDecision(d, text) {   // update the admin message and tell the player
+  try { if (d.adminChat) { await bot.telegram.editMessageReplyMarkup(d.adminChat, d.adminMsg, undefined, { inline_keyboard: [] }); await bot.telegram.editMessageCaption(d.adminChat, d.adminMsg, undefined, text, { parse_mode: 'HTML' }); } } catch (e) { /* message may be too old */ }
+  if (d.status === 'approved') notify(d.tgId, `✅ ${d.finalAmount} coins were added to your balance.\nသင့်အကောင့်ထဲ ${d.finalAmount} coins ထည့်ပေးပြီးပါပြီ။`);
+  else notify(d.tgId, '❌ Your coin top-up request was rejected. Please contact the admin.\nသင့်တောင်းဆိုမှုကို ပယ်ချလိုက်ပါတယ်၊ Admin ကို ဆက်သွယ်ပါ။');
+}
+bot.action(/^dep:(ok|no|edit):([a-f0-9]{24})$/, async (ctx) => {
+  try {
+    const [, act, id] = ctx.match;
+    const d = await Deposit.findById(id);
+    if (!adminOk(d, ctx.from.id)) return ctx.answerCbQuery('Not allowed', { show_alert: true });
+    if (d.status !== 'pending') return ctx.answerCbQuery('Already handled');
+    if (act === 'ok') {
+      const done = await settleDeposit(id, 'approved', d.finalAmount || d.amount);
+      if (!done) return ctx.answerCbQuery('Already handled');
+      await ctx.answerCbQuery('Confirmed'); return afterDecision(done, `✅ <b>Confirmed</b>: ${done.finalAmount} coins\nPlayer ID: <code>${done.tgId}</code>`);
+    }
+    if (act === 'no') {
+      const done = await settleDeposit(id, 'rejected');
+      if (!done) return ctx.answerCbQuery('Already handled');
+      await ctx.answerCbQuery('Rejected'); return afterDecision(done, `❌ <b>Rejected</b>\nPlayer ID: <code>${done.tgId}</code>`);
+    }
+    // edit: the next number this admin sends is the amount that gets credited
+    await Deposit.updateMany({ admin: d.admin, awaitingEdit: true }, { $set: { awaitingEdit: false } });
+    await Deposit.updateOne({ _id: d._id }, { $set: { awaitingEdit: true } });
+    await ctx.answerCbQuery();
+    return ctx.reply(`✏️ Send the new amount (a whole number) for request ${id.slice(-6)}.\nThat many coins will be added to the player right away.`, { reply_markup: { force_reply: true } });
+  } catch (e) { console.error('deposit action failed', e); ctx.answerCbQuery('Error').catch(() => {}); }
+});
+bot.on('text', async (ctx, next) => {
+  try {
+    const n = Object.keys(ADMINS).find((k) => ADMINS[k].id && ADMINS[k].id === ctx.from.id);
+    if (!n) return next();
+    const d = await Deposit.findOne({ admin: Number(n), awaitingEdit: true, status: 'pending' }).sort({ createdAt: -1 });
+    if (!d) return next();
+    const txt = ctx.message.text.trim().replace(/[, ]/g, '');
+    if (!/^\d{1,9}$/.test(txt)) return ctx.reply('Please send a whole number, for example 300.');
+    const amount = Number(txt);
+    if (amount < 1 || amount > DEPOSIT_MAX) return ctx.reply(`The amount must be between 1 and ${DEPOSIT_MAX}.`);
+    const done = await settleDeposit(d._id, 'approved', amount);
+    if (!done) return ctx.reply('That request was already handled.');
+    await ctx.reply(`✅ ${amount} coins added to player ${done.tgId}.`);
+    return afterDecision(done, `✅ <b>Confirmed (edited)</b>: ${done.finalAmount} coins (asked ${done.amount})\nPlayer ID: <code>${done.tgId}</code>`);
+  } catch (e) { console.error('deposit edit failed', e); }
+});
 app.use(express.json({ limit: '10kb' }));
 app.get('/', (_, res) => res.send('Play2Win server OK'));
 
