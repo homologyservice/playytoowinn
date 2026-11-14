@@ -302,6 +302,7 @@ depositSchema.index({ admin: 1, awaitingEdit: 1 });
 const Deposit = mongoose.model('Deposit', depositSchema);
 const escHtml = (v) => String(v == null ? '' : v).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
 const clean = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, n);
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);   // a stuck Telegram call must never freeze the request or its lock
 const imgKind = (b) => (b.length > 12 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff ? 'jpeg' : b.length > 12 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47 ? 'png'
   : b.length > 12 && b.toString('ascii', 0, 4) === 'RIFF' && b.toString('ascii', 8, 12) === 'WEBP' ? 'webp' : null);
 const depView = (d) => ({ id: String(d._id), admin: d.admin, amount: d.finalAmount || d.amount, status: d.status, at: new Date(d.createdAt).getTime() });
@@ -334,17 +335,19 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
       if (await Deposit.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_DEPOSITS) return res.status(429).json({ error: 'too_many_pending' });
       const d = await Deposit.create({ tgId: uid, admin: adm.key ? Number(adm.key) : 1, username, amount });
       const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nUsername typed: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
+      console.log('deposit: sending screenshot', Math.round(buf.length / 1024) + 'KB', 'player', uid, 'admin', adm.key);
       try {
-        const sent = await bot.telegram.sendPhoto(adm.id, { source: buf, filename: 'screenshot.' + (kind === 'jpeg' ? 'jpg' : kind) }, {
+        const sent = await withTimeout(bot.telegram.sendPhoto(adm.id, { source: buf, filename: 'screenshot.' + (kind === 'jpeg' ? 'jpg' : kind) }, {
           caption, parse_mode: 'HTML',
           reply_markup: { inline_keyboard: [[{ text: `✅ Confirm ${amount}`, callback_data: 'dep:ok:' + d._id }, { text: '❌ Reject', callback_data: 'dep:no:' + d._id }], [{ text: '✏️ Edit amount', callback_data: 'dep:edit:' + d._id }]] },
-        });
+        }), 25000);
+        console.log('deposit: delivered to admin', adm.key);
         const ph = sent.photo && sent.photo[sent.photo.length - 1];
         await Deposit.updateOne({ _id: d._id }, { $set: { adminChat: sent.chat.id, adminMsg: sent.message_id, shotId: ph ? ph.file_id : '' } });
       } catch (e) {
         console.error('deposit: admin not reachable', e && e.message);
         await Deposit.updateOne({ _id: d._id }, { $set: { status: 'failed' } });
-        return res.status(502).json({ error: 'admin_unreachable' });
+        return res.status(e && e.message === 'timeout' ? 504 : 502).json({ error: e && e.message === 'timeout' ? 'admin_timeout' : 'admin_unreachable' });
       }
       res.json({ ok: true, id: String(d._id) });
     });
