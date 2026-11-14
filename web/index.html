@@ -348,7 +348,7 @@ document.addEventListener('click', e => {
   if (go === 'daily') { openChest(); return; }
   const sqEl = go === 'spin' ? $('wheelWrap') : b;
   restart(sqEl, 'sq'); sqEl.addEventListener('animationend', ev => { if (ev.animationName === 'tapSquash') sqEl.classList.remove('sq'); }, { once: true });
-  const page = { flydodge: 'duel.html', bomb: 'bombs.html', cards: 'lucky.html', slot: 'slots.html', ranking: 'ranking.html', history: 'history.html', spin: 'spin.html', invites: 'invites.html', profile: 'profile.html' }[go];
+  const page = { flydodge: 'duel.html', bomb: 'bombs.html', cards: 'lucky.html', slot: 'slots.html', ranking: 'ranking.html', shop: 'deposit.html', history: 'history.html', spin: 'spin.html', invites: 'invites.html', profile: 'profile.html' }[go];
   if (page) { setTimeout(() => { location.href = page + location.search; }, 260); return; }
   toast(go + ' - coming soon');
 });

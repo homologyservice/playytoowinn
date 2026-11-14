@@ -268,6 +268,9 @@ const Mock = (() => {
       const items = all.map((x, i) => ({ rank: i + 1, name: x.name, coins: x.coins, me: !!x.me }));
       return { items, me: { rank: items.find(x => x.me).rank, coins: s.coins, name: me.name, listed: graphemes(me.name).length > 1 } };
     },
+    async depositConfig() { return { admins: [{ key: '1', name: 'Admin 1', username: 'admin_one', available: true }, { key: '2', name: 'Admin 2', username: '', available: true }], min: 100, max: 1000000, shotMinMb: 0.05, shotMaxMb: 5 }; },
+    async depositMine() { return { items: s.deps || [] }; },
+    async depositSubmit(b) { s.deps = [{ id: String(Date.now()), admin: Number(b.admin), amount: b.amount, status: 'pending', at: Date.now() }].concat(s.deps || []).slice(0, 5); save(s); return { ok: true }; },
     async profile() {
       const l = this._inv().list;
       return { id: 123456789, name: name(), username: '', coins: s.coins, hearts: s.hearts, rank: (await this.ranking()).me.rank, plays: s.matches.length + (s.bomb ? s.bomb.hist.length : 0) + (s.lucky ? s.lucky.hist.length : 0),
@@ -302,6 +305,9 @@ const api = LIVE ? {
   invitesClaim: id => call('/api/invites/claim', { id: Number(id) }),
   ranking: () => call('/api/ranking'),
   profile: () => call('/api/profile'),
+  depositConfig: () => call('/api/deposit/config'),
+  depositMine: () => call('/api/deposit/mine'),
+  depositSubmit: b => call('/api/deposit/submit', b),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */
@@ -317,3 +323,6 @@ if (!LIVE) addEventListener('DOMContentLoaded', () => {
   d.style.cssText = 'position:fixed;left:6px;right:6px;top:3px;z-index:999;background:rgba(255,70,70,.9);color:#fff;font:700 11px/1.25 sans-serif;padding:3px 8px;border-radius:10px;pointer-events:none;text-align:center';
   document.body.appendChild(d);
 });
+
+/* If an image file is missing on the server, hide it instead of showing the browser's broken-image icon. Add data-keep to an <img> that has its own fallback. */
+addEventListener('error', e => { const t = e.target; if (t && t.tagName === 'IMG' && !t.hasAttribute('data-keep')) t.style.visibility = 'hidden'; }, true);

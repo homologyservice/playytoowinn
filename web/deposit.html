@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Add coins</title>
+<style>
+#wrap{position:fixed;left:0;top:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#wrap::-webkit-scrollbar{display:none}
+#stage{position:absolute;left:0;top:0;width:720px;height:auto;transform-origin:0 0}
+#col{position:relative;padding:136px 24px 60px}
+.flow{position:relative!important;margin-bottom:26px}
+.h{font-size:34px;font-weight:700}
+.mmx{font-family:"Noto Sans Myanmar","Fredoka",system-ui,sans-serif;font-weight:500;line-height:1.5;color:#dcebff;font-size:23px}
+#pick{padding:26px 22px 24px}
+#cards{display:flex;gap:18px;margin-top:20px}
+.adm{position:relative;flex:1;height:290px;border-radius:36px;padding:18px 10px;text-align:center;background:linear-gradient(#232c74,#141a4f);border:4px solid #6f7df0;transition:.15s;cursor:pointer}
+.adm img{width:150px;height:150px;margin:0 auto;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.08);border:4px solid #ffd63a}
+.adm .nm{font-size:36px;font-weight:700;margin-top:12px}
+.adm .sb{font-size:21px;color:#aab6ff}
+.adm.sel{border-color:#ffd63a;background:linear-gradient(#34419a,#1c2468);box-shadow:0 0 26px rgba(255,214,58,.6)}
+.adm.sel::after{content:"✓";position:absolute;right:14px;top:12px;width:48px;height:48px;border-radius:50%;background:#1fb878;border:3px solid #fff;font-size:30px;line-height:42px}
+.adm.off{opacity:.45;cursor:default}
+#form{display:none;padding:26px 24px 30px}
+#form.on{display:block;animation:fadeIn .25s ease-out}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.top img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid #ffd63a;background:rgba(255,255,255,.08)}
+.top .h{flex:1}
+.lab{font-size:27px;font-weight:700;margin:22px 0 8px;color:#fff}
+.inp{width:100%;height:92px;border-radius:30px;border:3px solid #5f6fe8;padding:0 26px;font:inherit;font-size:34px;font-weight:600;color:#fff;outline:none;
+ background:linear-gradient(#10164a,#1b2466);box-shadow:inset 0 4px 10px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text}
+.inp::placeholder{color:#7f8ad8;font-weight:500}
+.inp:focus{border-color:#ffd63a}
+.hint{font-size:21px;color:#c3d1ff;margin-top:8px}
+.err{font-size:22px;color:#ffb0b8;margin-top:8px;min-height:0}
+#shot{position:relative;min-height:230px;border:4px dashed #8fa0ff;border-radius:34px;background:rgba(10,16,70,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center;cursor:pointer}
+#shot.has{border-style:solid;border-color:#1fb878}
+#shot .ic{width:90px;height:90px}
+#shot .ic svg,#shot .ic img{width:90px;height:90px}
+#shot .t1{font-size:30px;font-weight:700}
+#shot .t2{font-size:21px;color:#c3d1ff}
+#prev{display:none;align-items:center;gap:20px;width:100%}
+#shot.has #prev{display:flex}#shot.has .idle{display:none!important}
+#prev img{width:150px;height:150px;object-fit:cover;border-radius:20px;border:3px solid #fff}
+#prev .meta{flex:1;text-align:left;font-size:23px;line-height:1.3;word-break:break-all}
+#prev .rm{display:inline-block;margin-top:8px;padding:6px 18px;border-radius:18px;background:#d8384f;border:2px solid #fff;font-size:21px;font-weight:700}
+#submit{position:relative!important;width:100%;height:110px;margin-top:30px;font-size:44px}
+#reqs .r{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:2px solid rgba(255,255,255,.15);font-size:26px}
+#reqs .r:first-child{border-top:0}
+#reqs .r b{color:#ffd63a;flex:1}
+#reqs .r span.d{font-size:20px;color:#b6c4ff}
+#done{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);width:min(88vw,430px);padding:26px 22px 22px;border-radius:30px;text-align:center;z-index:80;opacity:0;pointer-events:none;transition:.25s;
+ background:linear-gradient(#5fa8f2,#3a74d4 45%,#25479f);border:3px solid #bfe0ff;box-shadow:0 14px 34px rgba(10,10,70,.55)}
+#done.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#done img{width:96px;margin:0 auto 8px}
+#done h3{font-size:26px;margin-bottom:8px}
+#done p{font-size:15px;line-height:1.45;color:#eaf2ff;margin-bottom:8px}
+#doneBtn{margin-top:10px;width:70%;height:50px;border-radius:25px;font-size:20px;font-weight:700;color:#fff;border:3px solid rgba(255,255,255,.75);background:linear-gradient(#72f2a6,#1fb878 55%,#0e9560);box-shadow:0 5px 0 #0a6b43}
+#doneScrim{position:fixed;inset:0;background:rgba(14,10,60,.7);z-index:79;display:none}#doneScrim.on{display:block}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">ADD COINS</div>
+ <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
+
+ <div id="col">
+  <div id="pick" class="panel flow">
+   <div class="h t">Add coins from which admin?</div>
+   <div class="mmx">ဘယ် Admin ဆီကနေ coins ဖြည့်မလဲ</div>
+   <div id="cards"></div>
+  </div>
+
+  <div id="form" class="panel flow">
+   <div class="top"><img id="fAv" data-keep src="assets/admin1_avatar.webp?v=2" alt=""><div class="h t" id="fName">Admin</div><button id="msgBtn" class="btn blue press" style="position:relative;height:70px;padding:0 26px;font-size:26px;display:none">Message</button></div>
+
+   <div class="lab t">Username</div>
+   <input id="inUser" class="inp" maxlength="64" autocomplete="off" autocapitalize="none" placeholder="Enter username">
+   <div class="lab t">Coins to add</div>
+   <input id="inAmt" class="inp" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" placeholder="Enter coin amount">
+   <div class="hint" id="amtHint"></div>
+   <div class="err" id="amtErr"></div>
+
+   <div class="lab t">Screenshot</div>
+   <div class="hint" style="margin:-4px 0 12px;font-size:22px;line-height:1.4">First tell the admin how many coins you want and pay, then attach the screenshot here.<br><span class="mmx" style="font-size:21px">Admin ကို coins ပမာဏ အရင်ပြောပြီး ငွေပေးချေပါ၊ ပြီးရင် screenshot ကို ဒီမှာ ထည့်ပါ။</span></div>
+   <div id="shot">
+    <div class="idle" style="display:flex;flex-direction:column;align-items:center;gap:6px">
+     <div class="ic" id="upIc"><svg viewBox="0 0 64 64" fill="none" stroke="#bcd0ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="12" width="48" height="40" rx="8"/><circle cx="23" cy="26" r="5"/><path d="M10 46l15-14 10 9 8-7 11 12"/></svg></div>
+     <div class="t1 t">Attach screenshot</div>
+     <div class="t2" id="shotRule">JPG / PNG / WebP</div>
+    </div>
+    <div id="prev"><img id="pvImg" alt=""><div class="meta"><div id="pvName"></div><div id="pvSize" style="color:#a9ffcb"></div><span class="rm" id="pvRm">Remove</span></div></div>
+   </div>
+   <input id="file" type="file" accept="image/jpeg,image/png,image/webp" style="display:none">
+   <div class="err" id="shotErr"></div>
+
+   <button id="submit" class="btn green press off" disabled>SUBMIT</button>
+  </div>
+
+  <div id="reqsBox" class="panel dark flow" style="display:none;padding:22px 26px">
+   <div class="h t" style="font-size:30px;margin-bottom:6px">Your requests</div>
+   <div id="reqs"></div>
+  </div>
+ </div>
+</div>
+</div>
+
+<div id="doneScrim"></div>
+<div id="done"><img src="assets/prize_coins_500.webp?v=2" alt=""><h3 class="t">REQUEST SENT</h3>
+ <p>The admin will check your screenshot. You will get a message in Telegram when your coins are added.</p>
+ <p class="mm" style="font-size:14px">Admin က screenshot ကို စစ်ပါလိမ့်မယ်။ coins ထည့်ပေးပြီးရင် Telegram မှာ message ပို့ပေးပါမယ်။</p>
+ <button id="doneBtn" class="press">OK</button></div>
+
+<script src="common.js"></script>
+<script>
+/* scale by width only and let the page scroll: the keyboard must not shrink the page */
+const wrap = $('wrap'), stage = $('stage');
+function fit() { const s = Math.min(innerWidth, 900) / 720; stage.style.transform = `scale(${s})`; stage.style.left = Math.max(0, (innerWidth - 720 * s) / 2) + 'px'; $('wrap').style.setProperty('--s', s); sizePad(); }
+function sizePad() { const s = Math.min(innerWidth, 900) / 720; let pad = $('pad'); if (!pad) { pad = document.createElement('div'); pad.id = 'pad'; wrap.appendChild(pad); } pad.style.cssText = `position:absolute;left:0;top:0;width:1px;height:${Math.ceil(stage.offsetHeight * s)}px;pointer-events:none`; }
+fit(); addEventListener('resize', fit); new ResizeObserver(sizePad).observe(stage);
+
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+
+let CFG = null, admin = null, shotData = null, busy = false;
+const nf = n => Number(n).toLocaleString('en-US');
+const MB = 1024 * 1024, mbTxt = n => (n < 1 ? n.toFixed(2) : n) + ' MB';
+// nicer upload picture if the file exists, otherwise the built-in icon stays
+{ const im = new Image(); im.onload = () => { $('upIc').innerHTML = ''; $('upIc').appendChild(im); }; im.src = 'assets/icon_upload_screenshot.webp?v=2'; }
+const FALL = { 1: '79_avatar_blue', 2: '79_avatar_purple' };
+const avatar = n => `assets/admin${n}_avatar.webp?v=2`;
+const withFallback = (img, n) => { img.src = avatar(n); img.onerror = () => { img.onerror = null; img.src = `assets/${FALL[n] || FALL[1]}.webp`; }; };
+
+function buildCards() {
+  const box = $('cards'); box.innerHTML = '';
+  CFG.admins.forEach(a => {
+    const d = document.createElement('div'); d.className = 'adm' + (a.available ? '' : ' off'); d.dataset.k = a.key;
+    d.innerHTML = `<img data-keep alt=""><div class="nm t">${escHtml(a.name)}</div><div class="sb">${a.available ? 'Tap to choose' : 'Not available'}</div>`;
+    withFallback(d.querySelector('img'), a.key);
+    if (a.available) d.onclick = () => choose(a.key);
+    box.appendChild(d);
+  });
+}
+function choose(k) {
+  haptic('light'); admin = CFG.admins.find(a => a.key === k);
+  document.querySelectorAll('.adm').forEach(x => x.classList.toggle('sel', x.dataset.k === k));
+  $('fName').textContent = admin.name; withFallback($('fAv'), k);
+  const mb = $('msgBtn'); mb.style.display = admin.username ? 'flex' : 'none';
+  mb.onclick = () => { const u = 'https://t.me/' + admin.username; if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else window.open(u, '_blank'); };
+  $('form').classList.add('on'); check();
+  setTimeout(() => { const y = $('form').getBoundingClientRect().top + wrap.scrollTop - 12; wrap.scrollTo({ top: y, behavior: 'smooth' }); }, 60);
+}
+
+const amt = () => { const t = $('inAmt').value.replace(/[^0-9]/g, ''); return t ? Number(t) : 0; };
+function check() {
+  const a = amt(), okAmt = a >= CFG.min && a <= CFG.max;
+  $('amtErr').textContent = a && !okAmt ? `Amount must be between ${nf(CFG.min)} and ${nf(CFG.max)}` : '';
+  const ok = !!admin && $('inUser').value.trim().length > 0 && okAmt && !!shotData && !busy;
+  const b = $('submit'); b.disabled = !ok; b.classList.toggle('off', !ok); b.classList.toggle('green', ok);
+}
+$('inUser').oninput = check; $('inAmt').oninput = () => { $('inAmt').value = $('inAmt').value.replace(/[^0-9]/g, ''); check(); };
+
+$('shot').onclick = e => { if (e.target.id === 'pvRm') return; $('file').click(); };
+$('pvRm').onclick = () => { shotData = null; $('file').value = ''; $('shot').classList.remove('has'); $('shotErr').textContent = ''; check(); };
+async function prep(file) {
+  const url = URL.createObjectURL(file);
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+  const k = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight)), w = Math.round(img.naturalWidth * k), h = Math.round(img.naturalHeight * k);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); URL.revokeObjectURL(url);
+  let q = .86, d; do { d = c.toDataURL('image/jpeg', q); q -= .1; } while (d.length > 5.5e6 && q > .3);
+  return d;
+}
+$('file').onchange = async () => {
+  const f = $('file').files[0]; if (!f) return; const err = $('shotErr'); err.textContent = '';
+  if (!/^image\/(jpeg|png|webp)$/.test(f.type)) { err.textContent = 'Please choose a JPG, PNG or WebP picture'; $('file').value = ''; return; }
+  if (f.size < CFG.shotMinMb * MB) { err.textContent = `The picture is too small (minimum ${mbTxt(CFG.shotMinMb)}). Please attach the real screenshot.`; $('file').value = ''; return; }
+  if (f.size > CFG.shotMaxMb * MB) { err.textContent = `The picture is too big (maximum ${mbTxt(CFG.shotMaxMb)}).`; $('file').value = ''; return; }
+  try {
+    shotData = await prep(f); $('pvImg').src = shotData; $('pvName').textContent = f.name; $('pvSize').textContent = (f.size / MB).toFixed(2) + ' MB';
+    $('shot').classList.add('has');
+  } catch (e) { shotData = null; err.textContent = 'Could not read this picture'; }
+  check();
+};
+
+const ERR = { admin_unavailable: 'This admin is not available right now', admin_unreachable: 'Could not reach the admin. Please message the admin and try again.', too_many_pending: 'You already have 3 requests waiting. Please wait for the admin.',
+  bad_amount: 'Check the coin amount', bad_username: 'Enter a username', bad_image: 'Please attach a valid screenshot', image_too_small: 'The picture is too small', image_too_big: 'The picture is too big' };
+$('submit').onclick = async () => {
+  if (busy) return; busy = true; check(); $('submit').textContent = 'SENDING…';
+  try {
+    await api.depositSubmit({ admin: admin.key, username: $('inUser').value.trim(), amount: amt(), image: shotData });
+    $('doneScrim').classList.add('on'); $('done').classList.add('on'); haptic('success');
+    $('inUser').value = ''; $('inAmt').value = ''; $('pvRm').click(); loadMine();
+  } catch (e) { toast(ERR[e.message] || 'Could not send, please try again'); }
+  busy = false; $('submit').textContent = 'SUBMIT'; check();
+};
+$('doneBtn').onclick = () => { $('done').classList.remove('on'); $('doneScrim').classList.remove('on'); wrap.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+const ST = { pending: ['pill orange', 'WAITING'], approved: ['pill green', 'ADDED'], rejected: ['pill grey', 'REJECTED'] };
+async function loadMine() {
+  try {
+    const d = await api.depositMine(); $('reqsBox').style.display = d.items.length ? 'block' : 'none';
+    $('reqs').innerHTML = d.items.map(x => { const s = ST[x.status] || ST.pending; return `<div class="r"><b>+${nf(x.amount)}</b><span class="d">Admin ${x.admin} · ${new Date(x.at).toLocaleDateString()}</span><span class="${s[0]}">${s[1]}</span></div>`; }).join('');
+  } catch (e) {}
+}
+(async () => {
+  try {
+    CFG = await api.depositConfig();
+    $('amtHint').textContent = `Min ${nf(CFG.min)} · Max ${nf(CFG.max)} coins`;
+    $('shotRule').textContent = `JPG / PNG / WebP · Min ${mbTxt(CFG.shotMinMb)} · Max ${mbTxt(CFG.shotMaxMb)}`;
+    buildCards(); loadMine();
+    const p = await api.profile().catch(() => null); if (p) $('coins').textContent = fmt(p.coins);
+  } catch (e) { toast('Could not load, please try again'); }
+})();
+</script>
+</body>
+</html>

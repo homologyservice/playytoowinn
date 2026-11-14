@@ -59,7 +59,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 .pop{animation:pop .45s ease-out both}
 .fx{position:absolute;pointer-events:none;animation:fxout .8s ease-out both}
 .badge{padding:4px 14px;border-radius:14px;font-size:20px;font-weight:700}
-.badge.w{background:#25c85a}.badge.l{background:#d8384f}.badge.e{background:#5c6fd8}
+.badge.w{background:#25c85a}.badge.l{background:#d8384f}.badge.e{background:#5c6fd8}.badge.p{background:#e8741a}
 .row2{position:absolute;left:62px;width:596px;height:66px;border-radius:20px;background:rgba(10,30,130,.55);border:2px solid rgba(170,200,255,.35);display:flex;align-items:center;padding:0 22px;gap:14px;font-size:24px}
 </style>
 </head>
@@ -120,7 +120,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
   <div class="glass night" style="left:29px;top:912px;width:662px;height:220px"></div>
   <div class="a c" style="left:0;right:0;top:926px;font-size:20px;font-weight:700;opacity:.9">CARD RETURNS</div>
   <div id="legend"></div>
-  <div class="a c" style="left:0;right:0;top:1160px;font-size:21px;line-height:1.35;opacity:.95">The cards are already set. Your choice only decides which one you see.<br><span class="gold">Skull = bet lost.</span></div>
+  <div class="a c" style="left:0;right:0;top:1160px;font-size:21px;line-height:1.35;opacity:.95">The cards are already set. Your choice only decides which one you see.<br><span class="gold">Skull = bet lost · Bronze = half back</span></div>
   <div class="a" id="fxLayer" style="left:0;top:0;width:720px;height:1400px;pointer-events:none"></div>
  </div>
 
@@ -131,10 +131,11 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
   <!-- lose popup: lucky-only frame (no bomb art); skull card sits on the red slot -->
   <div id="rLoseBox" class="a" style="display:none;left:0;top:420px;width:720px;height:600px;pointer-events:none">
     <img class="a" src="assets/lucky_frame_lose.webp" style="left:0;top:0;width:720px" alt="">
-    <img class="a" src="assets/lucky_05_card_skull.webp" style="left:305px;top:-40px;width:110px;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45))" alt="">
+    <img id="rLoseCard" class="a" src="assets/lucky_05_card_skull.webp" style="left:305px;top:-40px;width:110px;filter:drop-shadow(0 8px 12px rgba(0,0,0,.45))" alt="">
   </div>
   <div class="a c" id="rKicker" style="left:0;right:0;top:604px;font-size:21px;font-weight:700;letter-spacing:3px;opacity:.95"></div>
   <img id="rTitle" class="a pop" style="left:230px;top:626px;width:260px" alt="">
+  <div id="rTitleTxt" class="a c pop" style="display:none;left:60px;right:60px;font-size:46px;font-weight:700;color:#ffd63a;letter-spacing:1px;text-shadow:0 3px 0 #8a4a00,0 0 10px rgba(255,170,40,.6)"></div>
   <div class="a c" id="rSub" style="left:90px;right:90px;top:712px;font-size:21px;line-height:1.25"></div>
   <div id="rBanner" class="a fit" style="left:110px;top:786px;width:500px;height:66px;border-radius:20px;font-size:36px;font-weight:700"></div>
   <button id="rAgain" class="press" style="left:126px;top:872px;width:236px;height:80px">
@@ -333,9 +334,13 @@ function showResult(d) {
   const Y = lose ? { k: 600, t: 620, s: 706, b: 752, btn: 836 } : { k: 604, t: 626, s: 712, b: 786, btn: 872 };
   $('rKicker').style.top = Y.k + 'px'; $('rTitle').style.top = Y.t + 'px'; $('rSub').style.top = Y.s + 'px';
   $('rBanner').style.top = Y.b + 'px'; $('rAgain').style.top = Y.btn + 'px'; $('rLobby').style.top = Y.btn + 'px';
-  $('rTitle').src = B(net > 0 ? '37_title_you_win' : '38_title_you_lose'); $('rTitle').style.display = net === 0 ? 'none' : 'block';
+  const part = net < 0 && d.kind !== 'skull';              // a star card that returns less than the bet: not a "lose", the player did get coins back
+  const CARD_IMG = { skull: 'lucky_05_card_skull', bronze: 'lucky_06_card_star_bronze', silver: 'lucky_07_card_star_silver', gold: 'lucky_08_card_star_gold', diamond: 'lucky_09_card_star_diamond' };
+  $('rLoseCard').src = 'assets/' + (CARD_IMG[d.kind] || CARD_IMG.skull) + '.webp';
+  $('rTitle').src = B(net > 0 ? '37_title_you_win' : '38_title_you_lose'); $('rTitle').style.display = (net === 0 || part) ? 'none' : 'block';
+  const tt = $('rTitleTxt'); tt.style.display = part ? 'block' : 'none'; tt.style.top = (Y.t + 6) + 'px'; tt.textContent = part ? (CARD_NAME[d.kind] || '').toUpperCase() : '';
   const bn = $('rBanner');
-  bn.style.background = net > 0 ? 'linear-gradient(#ffe27a,#ffb42c 60%,#f08d14)' : net === 0 ? 'linear-gradient(#9db4ff,#5c7bdc)' : 'linear-gradient(rgba(150,130,190,.75),rgba(95,80,140,.8))';
+  bn.style.background = net > 0 ? 'linear-gradient(#ffe27a,#ffb42c 60%,#f08d14)' : net === 0 ? 'linear-gradient(#9db4ff,#5c7bdc)' : part ? 'linear-gradient(#ffb25a,#e8741a)' : 'linear-gradient(rgba(150,130,190,.75),rgba(95,80,140,.8))';
   bn.style.border = net > 0 ? '3px solid #fff0b0' : '2.5px solid rgba(215,200,245,.8)';
   bn.style.boxShadow = net > 0 ? 'inset 0 3px 6px rgba(255,255,255,.55),0 0 18px rgba(255,190,50,.5)' : 'inset 0 2px 6px rgba(255,255,255,.25)';
   const fr = $('rFrame'); fr.style.width = win ? '706px' : '736px'; fr.style.left = win ? '0px' : '4px'; fr.style.top = win ? '344px' : '350px';
@@ -343,12 +348,12 @@ function showResult(d) {
   if (d.kind === 'skull') $('rSub').textContent = 'Skull! Your ' + num(d.bet) + ' bet is lost.';
   else if (net > 0) $('rSub').textContent = CARD_NAME[d.kind] + '! ' + num(d.prize) + ' back, profit +' + num(net);
   else if (net === 0) $('rSub').textContent = CARD_NAME[d.kind] + ': bet returned.';
-  else $('rSub').textContent = CARD_NAME[d.kind] + ': ' + num(d.prize) + ' back, ' + num(-net) + ' lost.';
+  else $('rSub').textContent = num(d.prize) + ' of your ' + num(d.bet) + ' bet came back.';
   bn.textContent = net > 0 ? '+' + num(net) + ' COINS' : net === 0 ? 'EVEN' : '-' + num(-net) + ' COINS';
   bn.style.color = net > 0 ? '#5a2f00' : '#f6e8ff'; bn.style.textShadow = net > 0 ? '0 2px 0 rgba(255,255,255,.55)' : '0 2px 0 rgba(30,10,70,.8)';
   ['rFrame', 'rTitle'].forEach(id => { const el = $(id); el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); });
   $('rFx').innerHTML = '';
-  show('result', true); haptic(net > 0 ? 'success' : 'error');
+  show('result', true); haptic(net > 0 ? 'success' : part ? 'medium' : 'error');
   if (net > 0) { FX.confetti($('rFx'), 40, 720); FX.sparkles($('rFx'), 360, 640, 8, 220); }
 }
 $('rAgain').onclick = () => { show('result', false); startRound(lastBet); };
@@ -362,9 +367,9 @@ $('hist').onclick = async () => {
     $('hSub').textContent = h.items.length ? 'Latest 10 rounds' : 'No rounds yet. Go play!';
     $('hRows').innerHTML = h.items.slice(0, 10).map((r, i) => `
       <div class="row2" style="top:${296 + i * 74}px;height:66px">
-        <span class="badge ${r.net > 0 ? 'w' : r.net === 0 ? 'e' : 'l'}">${r.net > 0 ? 'WIN' : r.net === 0 ? 'EVEN' : 'LOSE'}</span>
+        <span class="badge ${r.net > 0 ? 'w' : r.net === 0 ? 'e' : r.kind !== 'skull' ? 'p' : 'l'}">${r.net > 0 ? 'WIN' : r.net === 0 ? 'EVEN' : r.kind !== 'skull' ? 'PART' : 'LOSE'}</span>
         <span style="flex:1;font-size:21px;line-height:1.15">Bet <b class="gold" style="font-size:22px">${num(r.bet)}</b><br><span style="opacity:.8;font-size:18px">${CARD_NAME[r.kind]}</span></span>
-        <b style="color:${r.net > 0 ? '#7dff9c' : r.net === 0 ? '#c9d4ff' : '#ff9fb0'}">${r.net > 0 ? '+' + num(r.net) : r.net === 0 ? '0' : '-' + num(-r.net)}</b>
+        <b style="color:${r.net > 0 ? '#7dff9c' : r.net === 0 ? '#c9d4ff' : r.kind !== 'skull' ? '#ffc58a' : '#ff9fb0'}">${r.net > 0 ? '+' + num(r.net) : r.net === 0 ? '0' : '-' + num(-r.net)}</b>
       </div>`).join('');
   } catch (e) { $('hSub').textContent = errMsg(e); }
 };
