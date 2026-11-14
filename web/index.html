@@ -9,6 +9,7 @@
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <script src="config.js"></script>
 <script src="common.js"></script>
+<script src="fx.js"></script>
 <style>
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;margin:0;padding:0}
 html,body{height:100%;overflow:hidden;background:#4a46b8 url(assets/27_menu_background_tile.webp) center/cover no-repeat;
@@ -125,6 +126,28 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 @keyframes scrShake{0%,100%{translate:0 0}20%{translate:-7px 4px}40%{translate:6px -5px}60%{translate:-4px 3px}80%{translate:3px -2px}}
 #main.shake{animation:scrShake .32s linear}
 @media (prefers-reduced-motion:reduce){.rocketBob,.wheelTick,.wheelWiggle,.letter,.logoWhole,.gift,.chestwrap.idle img{animation:none!important}}
+/* daily bonus popup */
+#dPop{position:absolute;left:0;top:0;width:720px;height:1136px;background:rgba(14,10,60,.74);display:none;z-index:40}
+#dPop.on{display:block;animation:dFade .2s ease-out}
+@keyframes dFade{from{opacity:0}to{opacity:1}}
+@keyframes dPopIn{0%{transform:scale(.4);opacity:0}60%{transform:scale(1.08);opacity:1}80%{transform:scale(.96)}100%{transform:scale(1)}}
+#dPanel{position:absolute;left:70px;top:270px;width:580px;height:640px;border-radius:44px;background:linear-gradient(#5fa8f2 0%,#3a74d4 45%,#25479f 100%);border:4px solid #bfe0ff;
+ box-shadow:inset 0 4px 0 rgba(255,255,255,.35),inset 0 -10px 22px rgba(10,20,100,.35),0 12px 28px rgba(20,10,80,.4)}
+#dPanel.pop{animation:dPopIn .55s cubic-bezier(.2,.8,.3,1) both}
+#dBurst{position:absolute;left:-30px;top:-110px;width:640px;opacity:.9;animation:dSpin 18s linear infinite;pointer-events:none}
+@keyframes dSpin{to{transform:rotate(360deg)}}
+#dTitle{position:absolute;left:50%;top:-44px;transform:translateX(-50%);min-width:420px;height:88px;padding:0 40px;display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:700;white-space:nowrap;
+ background:linear-gradient(#ffe98c,#f6b92f 55%,#d98a12);border:4px solid #fff3b0;border-radius:44px;text-shadow:0 3px 0 #9a5a0a;box-shadow:0 8px 0 #9a5a0a,0 14px 24px rgba(20,10,80,.45)}
+#dChest{position:absolute;left:170px;top:70px;width:240px;filter:drop-shadow(0 10px 12px rgba(10,10,60,.5))}
+#dBadge{position:absolute;left:50%;top:330px;transform:translateX(-50%);height:96px;padding:0 36px 0 100px;display:flex;align-items:center;font-size:58px;font-weight:700;color:#fff;
+ background:linear-gradient(#ffe98c,#f6b92f 60%,#d98a12);border:4px solid #fff3b0;border-radius:48px;text-shadow:0 3px 0 #9a5a0a;box-shadow:0 8px 0 #9a5a0a}
+#dBadge img{position:absolute;left:8px;top:-14px;width:110px}
+#dMsg{position:absolute;left:30px;width:520px;top:446px;text-align:center;font-size:32px;font-weight:700;line-height:1.25}
+#dMm{position:absolute;left:30px;width:520px;top:496px;text-align:center;font-size:22px;color:#e6f0ff;font-family:"Noto Sans Myanmar","Fredoka",sans-serif;font-weight:500;line-height:1.5}
+#dBtn{position:absolute;left:130px;top:548px;width:320px;height:80px;border-radius:40px;font-size:38px;font-weight:700;color:#fff;border:4px solid rgba(255,255,255,.75);
+ background:linear-gradient(#72f2a6,#1fb878 55%,#0e9560);box-shadow:0 8px 0 #0a6b43;text-shadow:0 3px 0 rgba(0,0,0,.35)}
+#dBtn:active{transform:translateY(5px)}
+.nbdot{position:absolute;right:26px;top:6px;width:26px;height:26px;border-radius:50%;background:#ff3b3b;border:3px solid #fff;z-index:2}
 #toast{position:fixed;left:50%;bottom:20%;transform:translate(-50%,20px);background:rgba(20,10,80,.92);padding:10px 18px;border-radius:16px;opacity:0;transition:.25s;pointer-events:none;font-size:15px;z-index:9}
 #toast.show{opacity:1;transform:translate(-50%,0)}
 </style>
@@ -182,6 +205,15 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  <button class="a g bomb press" data-go="bomb" style="left:44px;top:797px"><img src="assets/18_bomb_points.webp" alt=""><span>Bomb Points</span></button>
  <button class="a g cards press" data-go="cards" style="left:257px;top:797px"><img src="assets/19_lucky_cards.webp" alt=""><span>Lucky Cards</span></button>
  <button class="a g slot press" data-go="slot" style="left:470px;top:797px"><img src="assets/20_slot_machine.webp" alt=""><span>Slot Machine</span></button>
+
+ <div id="dPop"><div id="dPanel">
+  <img id="dBurst" src="assets/daily_burst.webp" alt="">
+  <div id="dTitle">DAILY BONUS</div>
+  <img id="dChest" src="assets/11_daily_bonus_chest.webp" alt="">
+  <div id="dBadge"><img src="assets/04_gold_coins.webp" alt=""><span id="dAmt">+100</span></div>
+  <div id="dMsg"></div><div id="dMm"></div>
+  <button id="dBtn">OK</button>
+ </div><div id="dFx" style="position:absolute;left:0;top:0;width:720px;height:1136px;pointer-events:none;overflow:hidden"></div></div>
 </div>
 
 <div id="nav">
@@ -264,20 +296,48 @@ initLogo();
 const CHEST_OPEN = 'assets/11_daily_bonus_chest.webp', CHEST_CLOSED = 'assets/daily_chest_closed.webp?v=2';
 let chestClosedOK = false, chestBusy = false;
 loadImg(CHEST_CLOSED).then(im => { if (im) { chestClosedOK = true; $('chestImg').src = CHEST_CLOSED; } });
-async function openChest(){
-  if (chestBusy) return; chestBusy = true;
-  const w = $('chestWrap'), img = $('chestImg');
-  w.classList.remove('idle', 'boom', 'slam'); void w.offsetWidth; w.classList.add('slam');
-  haptic('medium');
-  await sleep(600);                                         // the moment the chest hits the ground
-  w.classList.add('boom'); img.src = CHEST_OPEN; haptic('heavy');
-  restart($('main'), 'shake');
-  await sleep(900);
-  toast('Daily bonus - coming soon');
-  await sleep(1600);
-  w.classList.remove('slam', 'boom'); if (chestClosedOK) img.src = CHEST_CLOSED; w.classList.add('idle');
-  chestBusy = false;
+let dailyAvail = true, dailyNext = 0, dTimer = null;
+function paintChest(){ const w = $('chestWrap'); w.classList.toggle('idle', dailyAvail && !chestBusy); }
+function dailyPopup(opts){
+  const pop = $('dPop'), panel = $('dPanel'), fx = $('dFx'); fx.innerHTML = ''; clearInterval(dTimer);
+  $('dTitle').textContent = opts.title; $('dChest').src = opts.open ? CHEST_OPEN : (chestClosedOK ? CHEST_CLOSED : CHEST_OPEN);
+  $('dBadge').style.display = opts.badge ? 'flex' : 'none'; $('dMsg').innerHTML = opts.msg; $('dMm').innerHTML = opts.mm || '';
+  pop.classList.add('on'); panel.classList.remove('pop'); void panel.offsetWidth; panel.classList.add('pop');
+  if (opts.celebrate) { FX.sparkles(fx, 360, 560, 12, 280); FX.coins(fx, 360, 600, 10); FX.confetti(fx, 26, 720); }
+  if (opts.timer) { const t = () => { const ms = dailyNext - Date.now(); if (ms <= 0) { dailyAvail = true; paintChest(); $('dPop').classList.remove('on'); clearInterval(dTimer); return; } $('dMsg').innerHTML = 'Next bonus in <span style="color:#ffd63a">' + mmss2(ms) + '</span>'; }; t(); dTimer = setInterval(t, 1000); }
+  $('dBtn').onclick = () => { haptic('light'); pop.classList.remove('on'); fx.innerHTML = ''; clearInterval(dTimer); };
 }
+async function openChest(){
+  if (chestBusy) return;
+  if (!dailyAvail) {   // already taken today: no slam, just a polite "come back" popup with the countdown
+    const w = $('chestWrap'); restart(w, 'slam'); setTimeout(() => w.classList.remove('slam'), 300);
+    dailyPopup({ title: 'COLLECTED', msg: '', mm: 'ဒီနေ့အတွက် ရပြီးပါပြီ၊ မနက်ဖြန်ပြန်လာခဲ့ပါ', timer: true }); return;
+  }
+  chestBusy = true;
+  const w = $('chestWrap'), img = $('chestImg');
+  let res = null, err = null; const call = api.dailyClaim().then(x => { res = x; }).catch(e => { err = e; });   // the server decides, the animation only waits for it
+  w.classList.remove('idle', 'boom', 'slam'); void w.offsetWidth; w.classList.add('slam'); haptic('medium');
+  await sleep(600); await call;                              // the moment the chest hits the ground
+  if (res) {
+    w.classList.add('boom'); img.src = CHEST_OPEN; haptic('heavy'); restart($('main'), 'shake');
+    $('coins').textContent = fmtK(res.coins); dailyAvail = false; dailyNext = res.nextAt;
+    await sleep(900);
+    dailyPopup({ title: 'DAILY BONUS', open: true, badge: true, msg: 'You got ' + res.amount + ' coins!', mm: 'ဒီနေ့ဆုလာဒ် ' + res.amount + ' coins ရရှိပါပြီ', celebrate: true });
+    $('dAmt').textContent = '+' + res.amount; haptic('success');
+    await sleep(900);
+  } else if (err && err.message === 'already_claimed') {
+    dailyAvail = false; dailyNext = (err.data && err.data.nextAt) || (Date.now() + 36e5);
+    dailyPopup({ title: 'COLLECTED', msg: '', mm: 'ဒီနေ့အတွက် ရပြီးပါပြီ၊ မနက်ဖြန်ပြန်လာခဲ့ပါ', timer: true });
+  } else toast('Could not collect, try again');
+  w.classList.remove('slam', 'boom'); if (chestClosedOK) img.src = CHEST_CLOSED; chestBusy = false; paintChest();
+}
+// red dots only when there is something to collect
+(async () => {
+  const [d, sp, iv] = await Promise.allSettled([api.dailyState(), api.spinState(), api.invitesState()]);
+  if (d.status === 'fulfilled') { dailyAvail = d.value.available; dailyNext = d.value.nextAt; paintChest(); }
+  const dot = document.querySelector('#spinBtn .dot'); if (dot) dot.style.display = (sp.status === 'fulfilled' && (sp.value.freeAvailable || sp.value.freeSpins > 0)) ? '' : 'none';
+  if (iv.status === 'fulfilled' && iv.value.completed.some(x => !x.claimed)) { const n = document.querySelector('[data-go="invites"]'); if (n) { const i = document.createElement('i'); i.className = 'nbdot'; n.appendChild(i); } }
+})();
 
 /* Tap feedback + navigation */
 document.addEventListener('click', e => {
@@ -288,7 +348,7 @@ document.addEventListener('click', e => {
   if (go === 'daily') { openChest(); return; }
   const sqEl = go === 'spin' ? $('wheelWrap') : b;
   restart(sqEl, 'sq'); sqEl.addEventListener('animationend', ev => { if (ev.animationName === 'tapSquash') sqEl.classList.remove('sq'); }, { once: true });
-  const page = { flydodge: 'duel.html', bomb: 'bombs.html', cards: 'lucky.html', slot: 'slots.html' }[go];
+  const page = { flydodge: 'duel.html', bomb: 'bombs.html', cards: 'lucky.html', slot: 'slots.html', ranking: 'ranking.html', history: 'history.html', spin: 'spin.html', invites: 'invites.html', profile: 'profile.html' }[go];
   if (page) { setTimeout(() => { location.href = page + location.search; }, 260); return; }
   toast(go + ' - coming soon');
 });

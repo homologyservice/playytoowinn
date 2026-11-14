@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Lucky Spin</title>
+<style>
+#wheelBox{left:80px;top:230px;width:560px;height:560px}
+#disc{position:absolute;left:0;top:0;width:560px;height:560px;transform-origin:49.8% 51.3%;will-change:transform}
+#disc>img{width:560px;filter:drop-shadow(0 14px 18px rgba(10,10,60,.55))}
+.wr{position:absolute;left:279px;top:287px;width:0;height:0}
+.pz{position:absolute;left:-46px;top:-196px;width:92px;height:120px;text-align:center}
+.pz img{width:64px;margin:0 auto}
+.pz b{display:block;margin-top:4px;font-size:26px;line-height:28px;color:#fff;text-shadow:0 2px 0 rgba(20,10,90,.95),0 0 5px rgba(20,10,90,.8),2px 0 0 rgba(20,10,90,.8),-2px 0 0 rgba(20,10,90,.8)}
+.pz b.sm{font-size:15px;letter-spacing:.5px}
+#ptr{position:absolute;left:0;top:0;width:560px;transform-origin:50% 14%;pointer-events:none;filter:drop-shadow(0 6px 6px rgba(10,10,60,.5))}
+@keyframes kick{0%{transform:rotate(0)}30%{transform:rotate(-16deg)}100%{transform:rotate(0)}}
+#ptr.kick{animation:kick .16s ease-out}
+#status{left:60px;width:600px;top:812px;font-size:30px}
+#spinBtn{left:150px;top:880px;width:420px;height:128px;font-size:46px;flex-direction:column;gap:0;line-height:1.05}
+#spinBtn small{font-size:22px;font-weight:600;opacity:.95}
+#spinBtn .cost{display:inline-flex;align-items:center;gap:6px;font-size:26px}
+#spinBtn .cost img{width:34px}
+#legend{left:24px;top:1040px;width:672px;height:216px}
+#legend .row{position:absolute;left:10px;right:10px;top:14px;display:flex;justify-content:space-between}
+#legend .it{width:90px;text-align:center;font-size:20px;font-weight:700}
+#legend .it img{width:58px;margin:0 auto 2px}
+#legend .note{position:absolute;left:20px;right:20px;top:116px;text-align:center;font-size:20px;line-height:1.35;color:#d7e6ff}
+</style>
+</head>
+<body>
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">LUCKY SPIN</div>
+ <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
+
+ <img class="a rot" style="left:-20px;top:130px;width:760px;opacity:.55" src="assets/daily_burst.webp" alt="">
+ <div id="wheelBox" class="a">
+  <div id="disc"><img src="assets/spin_wheel_disc.webp?v=2" alt=""></div>
+  <img id="ptr" src="assets/spin_wheel_pointer.webp?v=2" alt="">
+ </div>
+
+ <div id="status" class="a c t"></div>
+ <button id="spinBtn" class="btn green"><span id="spinLbl">SPIN</span><small id="spinSub"></small></button>
+
+ <div id="legend" class="panel dark">
+  <div class="row" id="legRow"></div>
+  <div class="note">1 free spin every day · extra spins <span class="gold">100 coins</span><br><span class="mm">တစ်နေ့ကို အခမဲ့ တစ်ကြိမ် လှည့်နိုင်ပါတယ်၊ ထပ်လှည့်ရင် 100 coins ကျပါတယ်</span></div>
+ </div>
+
+ <div id="pop" class="scrim">
+  <div id="popPanel" class="panel pop">
+   <img id="popBurst" class="a rot" src="assets/claim_success_burst.webp" alt="">
+   <div id="popTitle" class="title t">YOU WON!</div>
+   <img id="popIcon" class="a" src="assets/prize_coins_100.webp" alt="">
+   <div id="popAmt" class="a c gold t"></div>
+   <div id="popSub" class="a c"></div>
+   <button id="popBtn" class="btn gold">OK</button>
+  </div>
+ </div>
+ <div id="fxTop" class="a"></div>
+</div>
+<script src="common.js"></script>
+<script src="fx.js"></script>
+<script>
+fitStage($('stage'));
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+
+const ICON = w => w.k === 'free' ? 'prize_free_spin' : w.k === 'try' ? 'prize_try_again' : w.v >= 500 ? 'prize_jackpot' : w.v >= 300 ? 'prize_coins_500' : w.v >= 200 ? 'prize_coins_200' : 'prize_coins_100';
+const IMG = n => `assets/${n}.webp?v=2`;
+let S = null, spinning = false, rot = 0, shown = 0;
+const disc = $('disc'), ptr = $('ptr');
+
+function buildWheel(w) {
+  w.forEach((x, i) => {
+    const d = document.createElement('div'); d.className = 'wr'; d.style.transform = `rotate(${i * 45}deg)`;
+    d.innerHTML = `<div class="pz"><img src="${IMG(ICON(x))}" alt=""><b class="${x.k === 'coins' ? '' : 'sm'}">${x.k === 'coins' ? x.v : x.k === 'free' ? 'FREE' : 'TRY AGAIN'}</b></div>`;
+    disc.appendChild(d);
+  });
+  // legend: every different prize once
+  const seen = new Set(), row = $('legRow');
+  w.slice().sort((a, b) => (a.v || 0) - (b.v || 0)).forEach(x => {
+    const key = x.k + (x.v || ''); if (seen.has(key)) return; seen.add(key);
+    const it = document.createElement('div'); it.className = 'it t';
+    it.innerHTML = `<img src="${IMG(ICON(x))}" alt="">${x.k === 'coins' ? x.v : x.k === 'free' ? 'FREE' : 'TRY'}`; row.appendChild(it);
+  });
+}
+function countTo(n) {   // balance chip counts up/down
+  const from = shown, t0 = performance.now(); shown = n;
+  (function f(t) { const k = Math.min(1, (t - t0) / 700); $('coins').textContent = fmt(Math.round(from + (n - from) * k)); if (k < 1) requestAnimationFrame(f); })(t0);
+}
+function paint() {
+  if (!S) return;
+  const now = Date.now(), canPay = S.coins >= S.cost, free = S.freeSpins > 0 || S.freeAvailable;
+  const st = $('status');
+  if (spinning) st.innerHTML = '&nbsp;';
+  else if (S.freeSpins > 0) st.innerHTML = `<span class="gold">Bonus spins: ${S.freeSpins}</span>`;
+  else if (S.freeAvailable) st.innerHTML = '<span class="gold">Your free spin of the day is ready!</span>';
+  else st.innerHTML = `Next free spin in <span class="gold">${mmss2(S.nextFreeAt - now)}</span>`;
+  const b = $('spinBtn'), off = spinning || (!free && !canPay);
+  b.className = 'btn ' + (off ? 'off' : free ? 'green' : 'gold'); b.disabled = off;
+  $('spinLbl').textContent = spinning ? 'SPINNING…' : free ? 'FREE SPIN' : 'SPIN';
+  $('spinSub').innerHTML = spinning ? '' : free ? (S.freeSpins > 0 ? 'Bonus spin' : 'Daily free spin')
+    : canPay ? `<span class="cost">Cost <img src="assets/04_gold_coins.webp" alt=""> ${S.cost}</span>` : 'Not enough coins';
+}
+setInterval(() => { if (S && !spinning) { if (!S.freeAvailable && Date.now() >= S.nextFreeAt) { S.freeAvailable = true; } paint(); } }, 1000);
+
+function trackTicks(ms) {
+  const t0 = performance.now(); let last = null;
+  (function f() {
+    const m = new DOMMatrix(getComputedStyle(disc).transform), ang = Math.atan2(m.b, m.a) * 180 / Math.PI;
+    const idx = Math.floor((((-ang + 22.5) % 360) + 360) % 360 / 45);
+    if (last !== null && idx !== last) { ptr.classList.remove('kick'); void ptr.offsetWidth; ptr.classList.add('kick'); haptic('light'); }
+    last = idx;
+    if (performance.now() - t0 < ms + 200) requestAnimationFrame(f);
+  })();
+}
+function turnTo(wedge) {
+  const jitter = (Math.random() - .5) * 26, target = -(wedge * 45) + jitter, cur = ((rot % 360) + 360) % 360;
+  rot += ((((target - cur) % 360) + 360) % 360) + 360 * 6;
+  const ms = 5200; disc.style.transition = `transform ${ms}ms cubic-bezier(.12,.62,.08,1)`; disc.style.transform = `rotate(${rot}deg)`;
+  trackTicks(ms); return ms;
+}
+
+async function doSpin() {
+  if (spinning || !S) return;
+  spinning = true; paint();
+  let r;
+  try { r = await api.spinPlay(); }
+  catch (e) { spinning = false; paint(); toast(e.message === 'not_enough_coins' ? 'Not enough coins' : 'Could not spin, try again'); return; }
+  const ms = turnTo(r.wedge);
+  setTimeout(() => {
+    S = { ...S, ...r }; spinning = false; countTo(S.coins); paint(); showResult(r);
+  }, ms + 150);
+}
+$('spinBtn').onclick = doSpin;
+
+function showResult(r) {
+  const fx = $('fxTop'); fx.innerHTML = '';
+  const w = { k: r.kind, v: r.amount };
+  $('popIcon').src = IMG(ICON(w));
+  if (r.kind === 'coins') {
+    $('popTitle').textContent = r.amount >= 300 ? 'BIG WIN!' : 'YOU WON!'; $('popAmt').innerHTML = `+${r.amount} <span style="font-size:36px">coins</span>`;
+    $('popSub').innerHTML = 'Added to your balance'; $('popBtn').textContent = 'COLLECT';
+    FX.sparkles(fx, 360, 560, 10, 260); FX.coins(fx, 360, 620, r.amount >= 300 ? 16 : 8); if (r.amount >= 300) FX.confetti(fx, 36, 720);
+    haptic('success');
+  } else if (r.kind === 'free') {
+    $('popTitle').textContent = 'FREE SPIN!'; $('popAmt').textContent = '+1 spin'; $('popSub').innerHTML = 'You won a free spin.<br>It costs nothing!'; $('popBtn').textContent = 'SPIN AGAIN';
+    FX.sparkles(fx, 360, 560, 8, 240); haptic('success');
+  } else {
+    $('popTitle').textContent = 'TRY AGAIN'; $('popAmt').innerHTML = '&nbsp;'; $('popSub').innerHTML = 'No prize this time.<br>Good luck on the next one!'; $('popBtn').textContent = 'OK'; haptic('error');
+  }
+  $('pop').classList.add('on'); const pp = $('popPanel'); pp.classList.remove('pop'); void pp.offsetWidth; pp.classList.add('pop');
+  $('popBtn').onclick = () => { $('pop').classList.remove('on'); fx.innerHTML = ''; if (r.kind === 'free' && S.freeSpins > 0) doSpin(); };
+}
+
+(async () => {
+  try { S = await api.spinState(); shown = S.coins; $('coins').textContent = fmt(S.coins); buildWheel(S.wedges); paint(); }
+  catch (e) { toast('Could not load the wheel'); }
+})();
+</script>
+</body>
+</html>

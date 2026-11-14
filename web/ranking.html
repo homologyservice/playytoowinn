@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Ranking</title>
+<style>
+#banner{left:-70px;top:104px;width:860px;pointer-events:none}
+#sub{left:60px;width:600px;top:352px;font-size:26px;color:#e0e9ff}
+#list{position:absolute;left:76px;top:446px;width:572px;height:640px;overflow-y:auto;overflow-x:hidden}
+#listIn{width:660px;zoom:.866}
+#list::-webkit-scrollbar{display:none}
+.row{position:relative;width:660px;height:96px;margin-bottom:10px;flex:none}
+.row .bg{position:absolute;inset:0;background-size:100% 100%}
+.row.me .bg{filter:hue-rotate(-155deg) saturate(1.6) brightness(1.15)}
+.row.me::after{content:"";position:absolute;inset:-2px;border-radius:18px;border:3px solid #ffd63a;box-shadow:0 0 16px rgba(255,214,58,.7);pointer-events:none}
+.row .rk{position:absolute;left:16px;top:18px;width:60px;height:60px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:700;border:3px solid rgba(255,255,255,.85);
+ background:linear-gradient(#7fa8ff,#3a63d6);text-shadow:0 2px 0 rgba(0,0,0,.35)}
+.row .rk.r1{background:linear-gradient(#ffe98c,#f0a91c 60%,#c77a0b)}
+.row .rk.r2{background:linear-gradient(#eef2ff,#aab4d4 60%,#7f8bb0)}
+.row .rk.r3{background:linear-gradient(#f3b184,#c8723e 60%,#97501f)}
+.row .av{position:absolute;left:92px;top:14px;width:68px}
+.row .cr{position:absolute;left:96px;top:-12px;width:46px;transform:rotate(-14deg)}
+.row .nm{position:absolute;left:176px;top:26px;width:270px;font-size:27px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .cn{position:absolute;right:20px;top:22px;display:flex;align-items:center;gap:8px;font-size:30px;font-weight:700;color:#ffd63a}
+.row .cn img{width:44px}
+#mine{left:24px;top:1112px;width:672px;height:136px}
+#mine .rk{position:absolute;left:22px;top:30px;min-width:96px;font-size:50px;font-weight:700;color:#fff}
+#mine .av{position:absolute;left:150px;top:30px;width:76px}
+#mine .nm{position:absolute;left:242px;top:26px;width:250px;font-size:30px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#5b3200;text-shadow:none}
+#mine .ns{position:absolute;left:242px;top:70px;width:300px;font-size:19px;color:#6b3f06}
+#mine .cn{position:absolute;right:24px;top:36px;display:flex;align-items:center;gap:8px;font-size:34px;font-weight:700;color:#ffd63a}
+#mine .cn img{width:50px}
+#empty{display:none;left:100px;width:520px;top:600px}
+</style>
+</head>
+<body>
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">RANKING</div>
+ <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
+ <img id="banner" class="a" src="assets/ranking_title_banner.webp" alt="">
+ <div id="sub" class="a c t">Top players by coins</div>
+ <div class="a stretch" style="left:14px;top:410px;width:692px;height:690px;background-image:url(assets/70_list_container.webp)"></div>
+ <div id="list"><div id="listIn"></div></div>
+ <div id="empty" class="a c"><img style="width:240px;margin:0 auto 8px" src="assets/80_empty_state.webp" alt=""><div class="t" style="font-size:32px;font-weight:700">No players yet</div></div>
+ <div id="mine" class="panel gold">
+  <div class="rk t" id="mRank">#-</div><img class="av" id="mAv" src="assets/79_avatar_blue.webp" alt="">
+  <div class="nm" id="mName">You</div><div class="ns" id="mNote"></div>
+  <div class="cn t"><img src="assets/04_gold_coins.webp" alt=""><span id="mCoins">0</span></div>
+ </div>
+</div>
+<script src="common.js"></script>
+<script>
+fitStage($('stage'));
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+const AV = ['79_avatar_blue','79_avatar_green','79_avatar_pink','79_avatar_purple','79_avatar_red','79_avatar_yellow'];
+const hash = s => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+(async () => {
+  try {
+    const d = await api.ranking();
+    const list = $('listIn'); $('empty').style.display = d.items.length ? 'none' : 'block';
+    d.items.forEach(i => {
+      const r = document.createElement('div'); r.className = 'row' + (i.me ? ' me' : '');
+      const nm = i.me ? 'You' : i.name;   // names arrive already masked from the server
+      r.innerHTML = `<div class="bg" style="background-image:url(assets/71_row_card_win.webp)"></div>
+        <div class="rk ${i.rank <= 3 ? 'r' + i.rank : ''}">${i.rank}</div>
+        ${i.rank === 1 ? '<img class="cr" src="assets/crown_gold.webp?v=2" alt="">' : ''}
+        <img class="av" src="assets/${AV[hash(nm + i.rank) % AV.length]}.webp" alt="">
+        <div class="nm t">${escHtml(nm)}</div><div class="cn t"><img src="assets/04_gold_coins.webp" alt="">${fmt(i.coins)}</div>`;
+      list.appendChild(r);
+    });
+    const m = d.me; $('coins').textContent = fmt(m.coins);
+    $('mRank').textContent = '#' + m.rank; $('mName').textContent = 'You'; $('mCoins').textContent = fmt(m.coins);
+    $('mAv').src = `assets/${AV[hash(m.name) % AV.length]}.webp`;
+    $('mNote').textContent = m.listed ? (m.rank <= d.items.length ? 'You are in the top ' + d.items.length : 'Keep playing to climb') : 'One-letter names are not shown in the list';
+  } catch (e) { toast('Could not load the ranking'); }
+})();
+</script>
+</body>
+</html>

@@ -14,7 +14,7 @@ function toast(msg) {
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('show'), 1800);
 }
-function haptic(kind) { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(kind || 'light'); } catch (e) {} }
+function haptic(kind) { try { if (localStorage.getItem('p2w_vib') === '0') return; tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred(kind || 'light'); } catch (e) {} }
 
 /* Scale 720x1280 design stage to fit the screen */
 function fitStage(el) {
@@ -37,7 +37,7 @@ async function call(path, body) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(j.error || 'network_error');
+  if (!r.ok) { const err = new Error(j.error || 'network_error'); err.data = j; throw err; }
   return j;
 }
 
@@ -56,6 +56,20 @@ const luckyPrize = (bet, kind) => Math.floor(bet * LUCKY_CARDS[kind] / 100);
 /* Slot Machine limits (same as server/index.js; the math itself is in slots_math.js) */
 const SLOT_BET_PRESETS = [50, 100, 200, 500, 600];
 const SLOT_BET_MIN = 10, SLOT_BET_MAX = 5000;
+
+/* Daily bonus, spin wheel, invites (same numbers as server/index.js; the server decides, these are for display + demo mode) */
+const DAILY_BONUS = 100, SPIN_COST = 100, INVITE_REWARD = 2000, DAY_OFFSET_MIN = 390;   // a "day" ends at Myanmar midnight (UTC+6:30)
+const dayKey = (t = Date.now()) => new Date(t + DAY_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+const nextDayAt = () => { const d = new Date(Date.now() + DAY_OFFSET_MIN * 60000); d.setUTCHours(24, 0, 0, 0); return d.getTime() - DAY_OFFSET_MIN * 60000; };
+/* wheel order = clockwise from the top; chances are per mille */
+const SPIN_WEDGES = [{ k: 'coins', v: 100 }, { k: 'try' }, { k: 'coins', v: 200 }, { k: 'free' }, { k: 'coins', v: 300 }, { k: 'try' }, { k: 'coins', v: 250 }, { k: 'coins', v: 500 }];
+const SPIN_ODDS = [{ k: 'try', w: 500 }, { k: 'free', w: 100 }, { k: 'coins', v: 100, w: 180 }, { k: 'coins', v: 200, w: 100 }, { k: 'coins', v: 250, w: 50 }, { k: 'coins', v: 300, w: 45 }, { k: 'coins', v: 500, w: 25 }];
+const mmss2 = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(t / 3600)).padStart(2, '0') + ':' + String(Math.floor(t / 60) % 60).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
+/* name masking for the ranking: last 3 characters -> ***, 3 or fewer -> all stars, 1 character -> hidden (null). Burmese/emoji safe. */
+const _seg = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+const graphemes = str => _seg ? Array.from(_seg.segment(String(str || '')), x => x.segment) : Array.from(String(str || ''));
+function maskName(name) { const g = graphemes(name); if (g.length <= 1) return null; if (g.length <= 3) return '*'.repeat(g.length); return g.slice(0, g.length - 3).join('') + '***'; }
+const escHtml = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));   // names come from Telegram: never put them in HTML raw
 
 /* Demo mode: everything runs in this browser (localStorage). Used before the server is connected.
    It follows the same rules as the server: max 5 open slots, max 10 history rows. */
@@ -210,6 +224,55 @@ const Mock = (() => {
       s.coins += win; save(s);
       return { coins: s.coins, bet, stops, reels: stops.map((x, r) => SlotMath.visible(r, x)), line: SlotMath.payline(stops), sym, mult, win, net: win - bet };
     },
+    /* ---- Daily bonus / Spin / Invites / Ranking / Profile (demo) ---- */
+    async dailyState() { return { coins: s.coins, amount: DAILY_BONUS, available: s.lastDaily !== dayKey(), nextAt: nextDayAt() }; },
+    async dailyClaim() {
+      if (s.lastDaily === dayKey()) { const e = new Error('already_claimed'); e.data = { nextAt: nextDayAt(), coins: s.coins }; throw e; }
+      s.lastDaily = dayKey(); s.coins += DAILY_BONUS; save(s); return { amount: DAILY_BONUS, coins: s.coins, nextAt: nextDayAt() };
+    },
+    _spinView() { return { coins: s.coins, freeSpins: s.freeSpins || 0, freeAvailable: s.lastFreeSpin !== dayKey(), nextFreeAt: nextDayAt(), cost: SPIN_COST }; },
+    async spinState() { return { ...this._spinView(), wedges: SPIN_WEDGES }; },
+    async spinPlay() {
+      let source;
+      if ((s.freeSpins || 0) > 0) { s.freeSpins--; source = 'bonus'; }
+      else if (s.lastFreeSpin !== dayKey()) { s.lastFreeSpin = dayKey(); source = 'daily'; }
+      else { if (s.coins < SPIN_COST) throw new Error('not_enough_coins'); s.coins -= SPIN_COST; source = 'paid'; }
+      let r = Math.floor(Math.random() * 1000), prize = SPIN_ODDS[SPIN_ODDS.length - 1];
+      for (const o of SPIN_ODDS) { if (r < o.w) { prize = o; break; } r -= o.w; }
+      const idx = SPIN_WEDGES.map((w, i) => i).filter(i => SPIN_WEDGES[i].k === prize.k && (prize.k !== 'coins' || SPIN_WEDGES[i].v === prize.v));
+      const wedge = idx[Math.floor(Math.random() * idx.length)], amount = prize.k === 'coins' ? prize.v : 0;
+      if (prize.k === 'coins') s.coins += amount; if (prize.k === 'free') s.freeSpins = (s.freeSpins || 0) + 1;
+      save(s); return { wedge, kind: prize.k, amount, source, ...this._spinView() };
+    },
+    _inv() {   // demo friends: two waiting, two completed (one already claimed)
+      if (!s.inv) s.inv = { list: [
+        { id: '1', name: 'Aung Kyaw', at: Date.now() - 3600e3 * 5, done: false },
+        { id: '2', name: 'Su Su Hlaing', at: Date.now() - 3600e3 * 26, done: false },
+        { id: '3', name: 'Min Thant', at: Date.now() - 3600e3 * 50, done: true, claimed: false },
+        { id: '4', name: 'မောင်မောင်', at: Date.now() - 3600e3 * 90, done: true, claimed: true }] };
+      return s.inv;
+    },
+    async invitesState() {
+      const l = this._inv().list; save(s);
+      return { coins: s.coins, reward: INVITE_REWARD, link: 'https://t.me/Play2WinBot?start=inv_123456789',
+        pending: l.filter(x => !x.done).map(x => ({ id: x.id, name: x.name, at: x.at })), completed: l.filter(x => x.done).map(x => ({ id: x.id, name: x.name, claimed: !!x.claimed, at: x.at })) };
+    },
+    async invitesClaim(id) {
+      const f = this._inv().list.find(x => x.id === String(id) && x.done && !x.claimed); if (!f) throw new Error('nothing_to_claim');
+      f.claimed = true; s.coins += INVITE_REWARD; save(s); return { amount: INVITE_REWARD, coins: s.coins };
+    },
+    async ranking() {
+      const others = [['Michael Thompson', 48200], ['Ko Ko Aung', 41350], ['Thida', 36900], ['Sophia Martinez', 31200], ['Zaw Min Htet', 27850], ['A', 26000], ['Lin Lin', 21400], ['Nyein Chan', 18900], ['Emma', 15200], ['Htet Aung Lin', 12100], ['Jo', 9800], ['Kyaw Swar', 7600]]
+        .map(([n, c]) => ({ name: maskName(n), coins: c })).filter(x => x.name);
+      const me = { name: name(), coins: s.coins }, all = others.concat([{ ...me, me: true, name: maskName(me.name) || '*' }]).sort((a, b) => b.coins - a.coins);
+      const items = all.map((x, i) => ({ rank: i + 1, name: x.name, coins: x.coins, me: !!x.me }));
+      return { items, me: { rank: items.find(x => x.me).rank, coins: s.coins, name: me.name, listed: graphemes(me.name).length > 1 } };
+    },
+    async profile() {
+      const l = this._inv().list;
+      return { id: 123456789, name: name(), username: '', coins: s.coins, hearts: s.hearts, rank: (await this.ranking()).me.rank, plays: s.matches.length + (s.bomb ? s.bomb.hist.length : 0) + (s.lucky ? s.lucky.hist.length : 0),
+        invited: l.length, completed: l.filter(x => x.done).length, since: Date.now() - 86400e3 * 12 };
+    },
   };
 })();
 
@@ -231,6 +294,14 @@ const api = LIVE ? {
   luckyHistory: () => call('/api/lucky/history'),
   slotState: () => call('/api/slots/state'),
   slotSpin: b => call('/api/slots/spin', b),
+  dailyState: () => call('/api/daily/state'),
+  dailyClaim: () => call('/api/daily/claim', {}),
+  spinState: () => call('/api/spin/state'),
+  spinPlay: () => call('/api/spin/play', {}),
+  invitesState: () => call('/api/invites/state'),
+  invitesClaim: id => call('/api/invites/claim', { id: Number(id) }),
+  ranking: () => call('/api/ranking'),
+  profile: () => call('/api/profile'),
 } : Mock;
 
 /* Badge: shows WHY the pages are not connected to the server (so it is easy to fix) */
