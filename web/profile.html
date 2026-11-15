@@ -54,8 +54,8 @@
  <div class="a panel dark tile" style="left:372px;top:636px"><img src="assets/icon_stat_wins.webp?v=2" alt=""><div class="v t" id="sDone">-</div><div class="l">Invites completed</div></div>
 
  <button class="a panel menu press" id="mInv" style="top:818px"><img src="assets/icon_menu_invites.webp?v=2" alt=""><span class="lb t">Invite friends</span><span class="ch">›</span></button>
- <button class="a panel menu press" id="mHis" style="top:918px"><img src="assets/icon_menu_transactions.webp?v=2" alt=""><span class="lb t">Tournament history</span><span class="ch">›</span></button>
- <button class="a panel menu press" id="mRank" style="top:1018px"><img src="assets/icon_stat_best.webp?v=2" alt=""><span class="lb t">Ranking</span><span class="ch">›</span></button>
+ <button class="a panel menu press" id="mCoins" style="top:918px"><img src="assets/04_gold_coins.webp" alt=""><span class="lb t">Add coins</span><span class="ch">›</span></button>
+ <button class="a panel menu press" id="mHearts" style="top:1018px"><img src="assets/05_heart.webp" alt=""><span class="lb t">Buy hearts</span><span class="ch">›</span></button>
  <div class="a panel menu" id="mVib" style="top:1118px"><img src="assets/icon_menu_vibrate.webp?v=2" alt=""><span class="lb t">Vibration</span><div class="tg" id="tgVib"></div></div>
 </div>
 <script src="common.js"></script>
@@ -65,7 +65,7 @@ const home = () => { location.href = 'index.html' + location.search; };
 $('back').onclick = home;
 if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
 const go = p => () => { haptic('light'); location.href = p + location.search; };
-$('mInv').onclick = go('invites.html'); $('mHis').onclick = go('history.html'); $('mRank').onclick = go('ranking.html');
+$('mInv').onclick = go('invites.html'); $('mCoins').onclick = go('deposit.html'); $('mHearts').onclick = go('hearts.html');
 const vibOn = () => localStorage.getItem('p2w_vib') !== '0';
 const paintVib = () => $('tgVib').classList.toggle('on', vibOn());
 $('mVib').onclick = () => { localStorage.setItem('p2w_vib', vibOn() ? '0' : '1'); paintVib(); haptic('medium'); };

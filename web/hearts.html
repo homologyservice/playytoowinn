@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="my">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Hearts</title>
+<style>
+#have{left:24px;top:126px;width:672px;height:84px;border-radius:42px;display:flex;align-items:center;justify-content:center;gap:14px;font-size:34px;font-weight:700}
+#have img{width:62px}
+.pk{position:absolute;left:24px;width:672px;height:172px;border-radius:44px;overflow:visible}
+.pk .im{position:absolute;left:8px;top:-6px;width:176px;height:176px;filter:drop-shadow(0 8px 10px rgba(10,10,70,.45))}
+.pk .n{position:absolute;left:200px;top:28px;font-size:62px;font-weight:700;color:#ffd63a;line-height:1}
+.pk .n small{font-size:28px;color:#fff;margin-left:6px}
+.pk .e{position:absolute;left:202px;top:104px;font-size:22px;color:#dbe8ff}
+.pk .sv{position:absolute;left:478px;top:32px;height:36px;padding:0 14px;font-size:19px;line-height:30px}
+.pk .buy{left:410px;top:80px;width:240px;height:78px;font-size:34px;gap:8px}
+.pk .buy img{width:44px}
+.pk .tag{position:absolute;right:20px;top:-14px;height:38px;padding:0 18px;border-radius:19px;font-size:20px;font-weight:700;line-height:32px;background:linear-gradient(#ff7a7a,#e03a3a);border:3px solid #fff}
+#cf{z-index:60}
+#cfPanel{left:70px;top:380px;width:580px;height:520px}
+#cfImg{left:150px;top:-84px;width:280px;filter:drop-shadow(0 10px 12px rgba(10,10,60,.5))}
+#cfT{left:20px;width:540px;top:216px;font-size:46px;font-weight:700}
+#cfP{left:20px;width:540px;top:282px;font-size:36px;display:flex;align-items:center;justify-content:center;gap:10px;color:#ffd63a;font-weight:700}
+#cfP img{width:52px}
+#cfE{left:20px;width:540px;top:338px;font-size:24px;color:#ffc7cf;min-height:30px}
+#cfNo{left:36px;top:406px;width:240px;height:92px;font-size:34px}
+#cfYes{left:304px;top:406px;width:240px;height:92px;font-size:34px}
+#ok{z-index:70}
+#okPanel{left:70px;top:340px;width:580px;height:580px}
+#okBurst{left:-30px;top:-110px;width:640px;opacity:.95}
+#okImg{left:130px;top:40px;width:320px;filter:drop-shadow(0 10px 12px rgba(10,10,60,.5))}
+#okT{left:0;width:580px;top:384px;font-size:60px;font-weight:700}
+#okS{left:0;width:580px;top:462px;font-size:26px;color:#e6f0ff}
+#okBtn{left:130px;top:494px;width:320px;height:80px;font-size:34px;display:none}
+#fxTop{left:0;top:0;width:720px;height:1280px;pointer-events:none;z-index:90;overflow:hidden}
+</style>
+</head>
+<body>
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">HEARTS</div>
+ <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
+ <div id="have" class="a panel dark t"><img src="assets/05_heart.webp" alt=""><span>You have <span class="gold" id="hn">0</span> hearts</span></div>
+ <div id="list"></div>
+
+ <div id="cf" class="scrim">
+  <div id="cfPanel" class="panel pop">
+   <img id="cfImg" class="a" src="assets/hearts_pack_1.webp" alt="">
+   <div id="cfT" class="a c t">Buy 1 heart?</div>
+   <div id="cfP" class="a c"><img src="assets/04_gold_coins.webp" alt=""><span id="cfPv">700</span></div>
+   <div id="cfE" class="a c"></div>
+   <button id="cfNo" class="btn blue">CANCEL</button>
+   <button id="cfYes" class="btn gold">BUY</button>
+  </div>
+ </div>
+ <div id="ok" class="scrim">
+  <div id="okPanel" class="panel pop">
+   <img id="okBurst" class="a rot" src="assets/claim_success_burst.webp" alt="">
+   <img id="okImg" class="a" src="assets/hearts_pack_1.webp" alt="">
+   <div id="okT" class="a c gold t">+1</div>
+   <div id="okS" class="a c">hearts added!</div>
+  </div>
+ </div>
+ <div id="fxTop" class="a"></div>
+</div>
+<script src="common.js"></script>
+<script src="fx.js"></script>
+<script>
+fitStage($('stage'));
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+const nf = n => Number(n).toLocaleString('en-US');
+let S = { coins: 0, hearts: 0, packs: HEART_PACKS }, pick = null, busy = false;
+const img = n => `assets/hearts_pack_${n}.webp`;
+
+function paint() {
+  $('coins').textContent = fmt(S.coins); $('hn').textContent = S.hearts;
+  const box = $('list'); box.innerHTML = '';
+  S.packs.forEach((p, i) => {
+    const save = Math.round((1 - p.price / (700 * p.n)) * 100), can = S.coins >= p.price;
+    const d = document.createElement('div'); d.className = 'pk panel'; d.style.top = (232 + i * 198) + 'px';
+    d.innerHTML = `<img class="im" src="${img(p.n)}" alt="">
+      <div class="n t">x${p.n}<small>${p.n > 1 ? 'HEARTS' : 'HEART'}</small></div>
+      <div class="e">${nf(Math.round(p.price / p.n))} coins each</div>
+      ${save > 0 ? `<span class="pill green sv">SAVE ${save}%</span>` : ''}
+      ${p.n === 10 ? '<div class="tag t">BEST VALUE</div>' : ''}
+      <button class="btn ${can ? 'gold' : 'blue'} buy press" data-n="${p.n}"><img src="assets/04_gold_coins.webp" alt="">${nf(p.price)}</button>`;
+    d.querySelector('.buy').onclick = () => ask(p);
+    box.appendChild(d);
+  });
+}
+function ask(p) {
+  pick = p; haptic('light'); const can = S.coins >= p.price;
+  $('cfImg').src = img(p.n); $('cfT').textContent = `Buy ${p.n} ${p.n > 1 ? 'hearts' : 'heart'}?`; $('cfPv').textContent = nf(p.price);
+  $('cfE').textContent = can ? '' : `Not enough coins - you need ${nf(p.price - S.coins)} more`;
+  $('cfYes').textContent = can ? 'BUY' : 'ADD COINS'; $('cfYes').className = 'btn ' + (can ? 'gold' : 'green');
+  $('cf').classList.add('on'); const pp = $('cfPanel'); pp.classList.remove('pop'); void pp.offsetWidth; pp.classList.add('pop');
+}
+$('cfNo').onclick = () => $('cf').classList.remove('on');
+$('cfYes').onclick = async () => {
+  if (!pick || busy) return;
+  if (S.coins < pick.price) { location.href = 'deposit.html' + location.search; return; }
+  busy = true; $('cfYes').textContent = '…';
+  try {
+    const r = await api.heartsBuy(pick.n);
+    S.coins = r.coins; S.hearts = r.hearts; $('cf').classList.remove('on'); paint(); success(r.bought);
+  } catch (e) {
+    $('cf').classList.remove('on');
+    if (e.message === 'not_enough_coins') { toast('Not enough coins'); try { S = { ...S, ...(await api.heartsState()) }; paint(); } catch (x) {} } else toast('Could not buy, try again');
+  }
+  busy = false;
+};
+function success(n) {
+  const fx = $('fxTop'); fx.innerHTML = '';
+  $('okImg').src = img(n); $('okT').textContent = '+' + n; $('okS').textContent = n > 1 ? 'hearts added!' : 'heart added!';
+  FX.sparkles(fx, 360, 560, 12, 260); haptic('success');
+  $('ok').classList.add('on'); const pp = $('okPanel'); pp.classList.remove('pop'); void pp.offsetWidth; pp.classList.add('pop');
+  setTimeout(() => { $('ok').classList.remove('on'); fx.innerHTML = ''; }, 1900);
+}
+$('ok').onclick = () => { $('ok').classList.remove('on'); $('fxTop').innerHTML = ''; };
+(async () => { try { S = await api.heartsState(); paint(); } catch (e) { toast('Could not load the shop'); } })();
+</script>
+</body>
+</html>

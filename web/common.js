@@ -71,6 +71,7 @@ const nextDayAt = () => { const d = new Date(Date.now() + DAY_OFFSET_MIN * 60000
 /* wheel order = clockwise from the top; chances are per mille */
 const SPIN_WEDGES = [{ k: 'coins', v: 100 }, { k: 'try' }, { k: 'coins', v: 200 }, { k: 'free' }, { k: 'coins', v: 300 }, { k: 'try' }, { k: 'coins', v: 250 }, { k: 'coins', v: 500 }];
 const SPIN_ODDS = [{ k: 'try', w: 500 }, { k: 'free', w: 100 }, { k: 'coins', v: 100, w: 180 }, { k: 'coins', v: 200, w: 100 }, { k: 'coins', v: 250, w: 50 }, { k: 'coins', v: 300, w: 45 }, { k: 'coins', v: 500, w: 25 }];
+const HEART_PACKS = [{ n: 1, price: 700 }, { n: 2, price: 1400 }, { n: 3, price: 2000 }, { n: 5, price: 3400 }, { n: 10, price: 6000 }];   // same as the server
 const mmss2 = ms => { const t = Math.max(0, Math.ceil(ms / 1000)); return String(Math.floor(t / 3600)).padStart(2, '0') + ':' + String(Math.floor(t / 60) % 60).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0'); };
 /* name masking for the ranking: last 3 characters -> ***, 3 or fewer -> all stars, 1 character -> hidden (null). Burmese/emoji safe. */
 const _seg = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
@@ -275,7 +276,12 @@ const Mock = (() => {
       const items = all.map((x, i) => ({ rank: i + 1, name: x.name, coins: x.coins, me: !!x.me }));
       return { items, me: { rank: items.find(x => x.me).rank, coins: s.coins, name: me.name, listed: graphemes(me.name).length > 1 } };
     },
-    async depositConfig() { return { admins: [{ key: '1', name: 'Admin 1', username: 'admin_one', available: true }, { key: '2', name: 'Admin 2', username: '', available: true }], min: 100, max: 1000000, shotMinMb: 0.05, shotMaxMb: 5 }; },
+    async heartsState() { return { coins: s.coins, hearts: s.hearts, packs: HEART_PACKS }; },
+    async heartsBuy(n) {
+      const p = HEART_PACKS.find(x => x.n === Number(n)); if (!p) throw new Error('bad_pack'); if (s.coins < p.price) throw new Error('not_enough_coins');
+      s.coins -= p.price; s.hearts += p.n; save(s); return { bought: p.n, price: p.price, coins: s.coins, hearts: s.hearts };
+    },
+    async depositConfig() { return { admins: [{ key: '1', name: 'KPAY', username: '', available: true, pay: { label: 'KPAY', number: '09xxxxxxxxx', name: 'xxxxx' } }, { key: '2', name: 'WAVE PAY', username: '', available: true, pay: { label: 'WAVE PAY', number: '09xxxxxxxxx', name: 'xxxxx' } }], min: 100, max: 1000000, shotMinMb: 0.05, shotMaxMb: 5 }; },
     async depositMine() { return { items: s.deps || [] }; },
     async depositSubmit(b) { s.deps = [{ id: String(Date.now()), admin: Number(b.admin), amount: b.amount, status: 'pending', at: Date.now() }].concat(s.deps || []).slice(0, 5); save(s); return { ok: true }; },
     async profile() {
@@ -312,6 +318,8 @@ const api = LIVE ? {
   invitesClaim: id => call('/api/invites/claim', { id: Number(id) }),
   ranking: () => call('/api/ranking'),
   profile: () => call('/api/profile'),
+  heartsState: () => call('/api/hearts/state'),
+  heartsBuy: n => call('/api/hearts/buy', { n }),
   depositConfig: () => call('/api/deposit/config'),
   depositMine: () => call('/api/deposit/mine'),
   depositSubmit: b => call('/api/deposit/submit', b, 60000),

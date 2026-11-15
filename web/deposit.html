@@ -13,14 +13,21 @@
 #wrap{position:fixed;left:0;top:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
 #wrap::-webkit-scrollbar{display:none}
 #stage{position:absolute;left:0;top:0;width:720px;height:auto;transform-origin:0 0}
-#col{position:relative;padding:136px 24px 60px}
+#col{position:relative;padding:136px 24px 60px;pointer-events:none}
+#col>*{pointer-events:auto}
+#back,.title,.chip-coins{z-index:5}
 .flow{position:relative!important;margin-bottom:26px}
 .h{font-size:34px;font-weight:700}
 .mmx{font-family:"Noto Sans Myanmar","Fredoka",system-ui,sans-serif;font-weight:500;line-height:1.5;color:#dcebff;font-size:23px}
 #pick{padding:26px 22px 24px}
 #cards{display:flex;gap:18px;margin-top:20px}
 .adm{position:relative;flex:1;height:290px;border-radius:36px;padding:18px 10px;text-align:center;background:linear-gradient(#232c74,#141a4f);border:4px solid #6f7df0;transition:.15s;cursor:pointer}
-.adm img{width:150px;height:150px;margin:0 auto;border-radius:50%;object-fit:cover;background:rgba(255,255,255,.08);border:4px solid #ffd63a}
+.adm .lg{width:150px;height:150px;margin:0 auto;border-radius:34px;background:#fff;border:4px solid #ffd63a;display:flex;align-items:center;justify-content:center;padding:14px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
+.adm .lg img{width:100%;height:100%;object-fit:contain}
+.payb{border-radius:30px;padding:20px 22px;margin:6px 0 4px;background:linear-gradient(#10164a,#1b2466);border:3px solid #ffd63a;box-shadow:inset 0 4px 10px rgba(0,0,0,.5)}
+.payb .pl{font-size:36px;font-weight:700;color:#ffd63a;letter-spacing:.5px}
+.payb .pn{font-size:30px;font-weight:600;margin-top:6px}
+.payb .cp{margin-top:12px;display:inline-block;padding:8px 22px;border-radius:20px;background:linear-gradient(#8bb8ff,#3f79e6);border:2px solid #fff;font-size:22px;font-weight:700}
 .adm .nm{font-size:36px;font-weight:700;margin-top:12px}
 .adm .sb{font-size:21px;color:#aab6ff}
 .adm.sel{border-color:#ffd63a;background:linear-gradient(#34419a,#1c2468);box-shadow:0 0 26px rgba(255,214,58,.6)}
@@ -29,7 +36,8 @@
 #form{display:none;padding:26px 24px 30px}
 #form.on{display:block;animation:fadeIn .25s ease-out}
 .top{display:flex;align-items:center;gap:16px;margin-bottom:12px}
-.top img{width:84px;height:84px;border-radius:50%;object-fit:cover;border:3px solid #ffd63a;background:rgba(255,255,255,.08)}
+.top .lg{width:92px;height:92px;border-radius:24px;background:#fff;border:3px solid #ffd63a;display:flex;align-items:center;justify-content:center;padding:8px}
+.top .lg img{width:100%;height:100%;object-fit:contain}
 .top .h{flex:1}
 .lab{font-size:27px;font-weight:700;margin:22px 0 8px;color:#fff}
 .inp{width:100%;height:92px;border-radius:30px;border:3px solid #5f6fe8;padding:0 26px;font:inherit;font-size:34px;font-weight:600;color:#fff;outline:none;
@@ -73,23 +81,25 @@
 
  <div id="col">
   <div id="pick" class="panel flow">
-   <div class="h t">Add coins from which admin?</div>
-   <div class="mmx">ဘယ် Admin ဆီကနေ coins ဖြည့်မလဲ</div>
+   <div class="h t">Select a platform to add coins</div>
+   <div class="mmx">coins ဖြည့်ရန် platform ရွေးချယ်ပါ</div>
    <div id="cards"></div>
   </div>
 
   <div id="form" class="panel flow">
-   <div class="top"><img id="fAv" data-keep src="assets/admin1_avatar.webp?v=2" alt=""><div class="h t" id="fName">Admin</div><button id="msgBtn" class="btn blue press" style="position:relative;height:70px;padding:0 26px;font-size:26px;display:none">Message</button></div>
+   <div class="top"><div class="lg"><img id="fLogo" data-keep alt=""></div><div class="h t" id="fName">Platform</div></div>
+   <div class="payb"><div class="pl" id="payLabel">KPAY - 09xxxxxxx</div><div class="pn" id="payName">Name : xxxxx</div><span class="cp press" id="payCopy">COPY NUMBER</span></div>
+   <div class="hint" style="font-size:23px;line-height:1.4;color:#eaf2ff;margin:10px 0 0">Pay to this account, then attach the screenshot, fill in the details and press Submit.<br><span class="mmx" style="font-size:21px">သို့ ငွေပေးချေပြီး screenshot နှင့် အချက်အလက်များ ဖြည့်ပြီး submit ကို နှိပ်ပါ။</span></div>
 
-   <div class="lab t">Username</div>
-   <input id="inUser" class="inp" maxlength="64" autocomplete="off" autocapitalize="none" placeholder="Enter username">
+   <div class="lab t" id="userLab">Your account name</div>
+   <input id="inUser" class="inp" maxlength="64" autocomplete="off" autocapitalize="none" placeholder="Enter your account name">
    <div class="lab t">Coins to add</div>
    <input id="inAmt" class="inp" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" placeholder="Enter coin amount">
    <div class="hint" id="amtHint"></div>
    <div class="err" id="amtErr"></div>
 
    <div class="lab t">Screenshot</div>
-   <div class="hint" style="margin:-4px 0 12px;font-size:22px;line-height:1.4">First tell the admin how many coins you want and pay, then attach the screenshot here.<br><span class="mmx" style="font-size:21px">Admin ကို coins ပမာဏ အရင်ပြောပြီး ငွေပေးချေပါ၊ ပြီးရင် screenshot ကို ဒီမှာ ထည့်ပါ။</span></div>
+   <div class="hint" style="margin:-4px 0 12px;font-size:22px;line-height:1.4">Attach the payment screenshot here.<br><span class="mmx" style="font-size:21px">ငွေပေးချေထားတဲ့ screenshot ကို ဒီမှာ ထည့်ပါ။</span></div>
    <div id="shot">
     <div class="idle" style="display:flex;flex-direction:column;align-items:center;gap:6px">
      <div class="ic" id="upIc"><svg viewBox="0 0 64 64" fill="none" stroke="#bcd0ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="12" width="48" height="40" rx="8"/><circle cx="23" cy="26" r="5"/><path d="M10 46l15-14 10 9 8-7 11 12"/></svg></div>
@@ -135,15 +145,14 @@ const nf = n => Number(n).toLocaleString('en-US');
 const MB = 1024 * 1024, mbTxt = n => (n < 1 ? n.toFixed(2) : n) + ' MB';
 // nicer upload picture if the file exists, otherwise the built-in icon stays
 { const im = new Image(); im.onload = () => { $('upIc').innerHTML = ''; $('upIc').appendChild(im); }; im.src = 'assets/icon_upload_screenshot.webp?v=2'; }
-const FALL = { 1: '79_avatar_blue', 2: '79_avatar_purple' };
-const avatar = n => `assets/admin${n}_avatar.webp?v=2`;
-const withFallback = (img, n) => { img.src = avatar(n); img.onerror = () => { img.onerror = null; img.src = `assets/${FALL[n] || FALL[1]}.webp`; }; };
+const LOGO = { 1: 'assets/pay_kpay.webp', 2: 'assets/pay_wave.webp' }, SHORT = { 1: 'KPay', 2: 'Wave' };
+const withFallback = (img, n) => { img.src = LOGO[n] || LOGO[1]; };
 
 function buildCards() {
   const box = $('cards'); box.innerHTML = '';
   CFG.admins.forEach(a => {
     const d = document.createElement('div'); d.className = 'adm' + (a.available ? '' : ' off'); d.dataset.k = a.key;
-    d.innerHTML = `<img data-keep alt=""><div class="nm t">${escHtml(a.name)}</div><div class="sb">${a.available ? 'Tap to choose' : 'Not available'}</div>`;
+    d.innerHTML = `<div class="lg"><img data-keep alt=""></div><div class="nm t">${escHtml(a.pay ? a.pay.label : a.name)}</div><div class="sb">${a.available ? 'Tap to choose' : 'Not available'}</div>`;
     withFallback(d.querySelector('img'), a.key);
     if (a.available) d.onclick = () => choose(a.key);
     box.appendChild(d);
@@ -152,9 +161,11 @@ function buildCards() {
 function choose(k) {
   haptic('light'); admin = CFG.admins.find(a => a.key === k);
   document.querySelectorAll('.adm').forEach(x => x.classList.toggle('sel', x.dataset.k === k));
-  $('fName').textContent = admin.name; withFallback($('fAv'), k);
-  const mb = $('msgBtn'); mb.style.display = admin.username ? 'flex' : 'none';
-  mb.onclick = () => { const u = 'https://t.me/' + admin.username; if (tg && tg.openTelegramLink) tg.openTelegramLink(u); else window.open(u, '_blank'); };
+  const pay = admin.pay || { label: admin.name, number: '', name: '' }, sh = SHORT[k] || 'account';
+  $('fName').textContent = pay.label; withFallback($('fLogo'), k);
+  $('payLabel').textContent = pay.label + ' - ' + pay.number; $('payName').textContent = 'Name : ' + pay.name;
+  $('payCopy').onclick = async () => { try { await navigator.clipboard.writeText(pay.number); toast('Number copied'); } catch (e) { toast(pay.number); } };
+  $('userLab').textContent = 'Your ' + sh + ' account name'; $('inUser').placeholder = 'Enter your ' + sh + ' account name';
   $('form').classList.add('on'); check();
   setTimeout(() => { const y = $('form').getBoundingClientRect().top + wrap.scrollTop - 12; wrap.scrollTo({ top: y, behavior: 'smooth' }); }, 60);
 }
