@@ -282,8 +282,11 @@ app.use(cors({ origin: WEBAPP_URL.replace(/\/$/, ''), allowedHeaders: ['Content-
 //  Coins are ALWAYS credited to the player who sent the request (the typed username is only shown to the admin).
 //  Set ADMIN1_ID / ADMIN2_ID (Telegram user ids; each admin must have pressed /start in the bot once).
 // =====================================================================
+const PAY_LABEL = { 1: 'KPAY', 2: 'WAVE PAY' };
 const envAdmin = (n) => ({ key: String(n), id: Number(process.env['ADMIN' + n + '_ID'] || 0), name: process.env['ADMIN' + n + '_NAME'] || ('Admin ' + n),
-  username: String(process.env['ADMIN' + n + '_USERNAME'] || '').replace(/^@/, '') });
+  username: String(process.env['ADMIN' + n + '_USERNAME'] || '').replace(/^@/, ''),
+  // what the player sees after choosing this platform: "KPAY - 09xxxxxxx / Name : xxxxx"
+  pay: { label: process.env['ADMIN' + n + '_PAY_LABEL'] || PAY_LABEL[n], number: process.env['ADMIN' + n + '_PAY_NUMBER'] || '09xxxxxxxxx', name: process.env['ADMIN' + n + '_PAY_NAME'] || 'xxxxx' } });
 const ADMINS = { 1: envAdmin(1), 2: envAdmin(2) };
 const DEPOSIT_MIN = Number(process.env.DEPOSIT_MIN || 100), DEPOSIT_MAX = Number(process.env.DEPOSIT_MAX || 1000000);
 const SHOT_MIN_KB = 50, SHOT_MAX_MB = 5;                 // what the page tells the player (checked on the original file in the page)
@@ -358,7 +361,7 @@ async function sendShotToAdmin(adminId, depId, buf, kind, caption, markup) {
   return sent;
 }
 app.get('/api/deposit/config', auth, (req, res) => {
-  res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id })),
+  res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id, pay: ADMINS[n].pay })),
     min: DEPOSIT_MIN, max: DEPOSIT_MAX, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
 });
 app.get('/api/deposit/mine', auth, async (req, res) => {
@@ -384,7 +387,7 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
       const me = await upsertUser(req.tg);
       if (await Deposit.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_DEPOSITS) return res.status(429).json({ error: 'too_many_pending' });
       const d = await Deposit.create({ tgId: uid, admin: adm.key ? Number(adm.key) : 1, username, amount });
-      const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nUsername typed: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
+      const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nPlatform: <b>${escHtml(adm.pay.label)}</b>\nPayer account name: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
       console.log('deposit: sending screenshot', Math.round(buf.length / 1024) + 'KB', 'player', uid, 'admin', adm.key);
       try {
         const markup = { inline_keyboard: [[{ text: `✅ Confirm ${amount}`, callback_data: 'dep:ok:' + d._id }, { text: '❌ Reject', callback_data: 'dep:no:' + d._id }], [{ text: '✏️ Edit amount', callback_data: 'dep:edit:' + d._id }]] };
@@ -1112,6 +1115,25 @@ app.get('/api/profile', auth, async (req, res) => {
       User.countDocuments({ invitedBy: uid, qualifiedAt: { $ne: null } }),
     ]);
     res.json({ id: uid, name: me.name, username: me.username, coins: me.coins, hearts: me.hearts, rank, plays: me.plays || 0, invited, completed, since: new Date(me.createdAt).getTime() });
+  } catch (e) { fail(res, e); }
+});
+
+
+// =====================================================================
+//  HEARTS SHOP: hearts are bought with coins. One atomic update (coins -price, hearts +n), so it can never half-happen or be tapped twice.
+// =====================================================================
+const HEART_PACKS = [{ n: 1, price: 700 }, { n: 2, price: 1400 }, { n: 3, price: 2000 }, { n: 5, price: 3400 }, { n: 10, price: 6000 }];
+app.get('/api/hearts/state', auth, async (req, res) => {
+  try { const u = await upsertUser(req.tg); res.json({ coins: u.coins, hearts: u.hearts, packs: HEART_PACKS }); } catch (e) { fail(res, e); }
+});
+app.post('/api/hearts/buy', auth, async (req, res) => {
+  try {
+    const pack = HEART_PACKS.find((p) => p.n === Number(req.body && req.body.n));
+    if (!pack) return res.status(400).json({ error: 'bad_pack' });
+    await upsertUser(req.tg);
+    const u = await User.findOneAndUpdate({ tgId: req.tg.id, coins: { $gte: pack.price } }, { $inc: { coins: -pack.price, hearts: pack.n } }, { new: true });
+    if (!u) return res.status(402).json({ error: 'not_enough_coins' });
+    res.json({ bought: pack.n, price: pack.price, coins: u.coins, hearts: u.hearts });
   } catch (e) { fail(res, e); }
 });
 
