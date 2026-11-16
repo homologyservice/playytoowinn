@@ -50,7 +50,7 @@
 
  <div id="cf" class="scrim">
   <div id="cfPanel" class="panel pop">
-   <img id="cfImg" class="a" src="assets/hearts_pack_1.webp" alt="">
+   <img id="cfImg" class="a" src="assets/hearts_pack_1.webp?v=3" alt="">
    <div id="cfT" class="a c t">Buy 1 heart?</div>
    <div id="cfP" class="a c"><img src="assets/04_gold_coins.webp" alt=""><span id="cfPv">700</span></div>
    <div id="cfE" class="a c"></div>
@@ -61,7 +61,7 @@
  <div id="ok" class="scrim">
   <div id="okPanel" class="panel pop">
    <img id="okBurst" class="a rot" src="assets/claim_success_burst.webp" alt="">
-   <img id="okImg" class="a" src="assets/hearts_pack_1.webp" alt="">
+   <img id="okImg" class="a" src="assets/hearts_pack_1.webp?v=3" alt="">
    <div id="okT" class="a c gold t">+1</div>
    <div id="okS" class="a c">hearts added!</div>
   </div>
@@ -77,7 +77,7 @@ $('back').onclick = home;
 if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
 const nf = n => Number(n).toLocaleString('en-US');
 let S = { coins: 0, hearts: 0, packs: HEART_PACKS }, pick = null, busy = false;
-const img = n => `assets/hearts_pack_${n}.webp`;
+const img = n => `assets/hearts_pack_${n}.webp?v=3`;
 
 function paint() {
   $('coins').textContent = fmt(S.coins); $('hn').textContent = S.hearts;
