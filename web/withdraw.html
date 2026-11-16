@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Withdraw</title>
+<style>
+#wrap{position:fixed;left:0;top:0;right:0;bottom:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#wrap::-webkit-scrollbar{display:none}
+#stage{position:absolute;left:0;top:0;width:720px;height:auto;transform-origin:0 0}
+#col{position:relative;padding:136px 24px 60px;pointer-events:none}
+#col>*{pointer-events:auto}
+#back,.title,.chip-coins{z-index:5}
+.flow{position:relative!important;margin-bottom:26px}
+.h{font-size:34px;font-weight:700}
+.mmx{font-family:"Noto Sans Myanmar","Fredoka",system-ui,sans-serif;font-weight:500;line-height:1.5;color:#dcebff;font-size:23px}
+#pick{padding:26px 22px 24px}
+#cards{display:flex;gap:18px;margin-top:20px}
+.adm{position:relative;flex:1;height:290px;border-radius:36px;padding:18px 10px;text-align:center;background:linear-gradient(#232c74,#141a4f);border:4px solid #6f7df0;transition:.15s;cursor:pointer}
+.adm .lg{width:150px;height:150px;margin:0 auto;border-radius:34px;background:#fff;border:4px solid #ffd63a;display:flex;align-items:center;justify-content:center;padding:14px;box-shadow:0 6px 14px rgba(0,0,0,.35)}
+.adm .lg img{width:100%;height:100%;object-fit:contain}
+.payb{border-radius:30px;padding:20px 22px;margin:6px 0 4px;background:linear-gradient(#10164a,#1b2466);border:3px solid #ffd63a;box-shadow:inset 0 4px 10px rgba(0,0,0,.5)}
+.payb .pl{font-size:36px;font-weight:700;color:#ffd63a;letter-spacing:.5px}
+.payb .pn{font-size:30px;font-weight:600;margin-top:6px}
+.payb .cp{margin-top:12px;display:inline-block;padding:8px 22px;border-radius:20px;background:linear-gradient(#8bb8ff,#3f79e6);border:2px solid #fff;font-size:22px;font-weight:700}
+.adm .nm{font-size:36px;font-weight:700;margin-top:12px}
+.adm .sb{font-size:21px;color:#aab6ff}
+.adm.sel{border-color:#ffd63a;background:linear-gradient(#34419a,#1c2468);box-shadow:0 0 26px rgba(255,214,58,.6)}
+.adm.sel::after{content:"✓";position:absolute;right:14px;top:12px;width:48px;height:48px;border-radius:50%;background:#1fb878;border:3px solid #fff;font-size:30px;line-height:42px}
+.adm.off{opacity:.45;cursor:default}
+#form{display:none;padding:26px 24px 30px}
+#form.on{display:block;animation:fadeIn .25s ease-out}
+.top{display:flex;align-items:center;gap:16px;margin-bottom:12px}
+.top .lg{width:92px;height:92px;border-radius:24px;background:#fff;border:3px solid #ffd63a;display:flex;align-items:center;justify-content:center;padding:8px}
+.top .lg img{width:100%;height:100%;object-fit:contain}
+.top .h{flex:1}
+.lab{font-size:27px;font-weight:700;margin:22px 0 8px;color:#fff}
+.inp{width:100%;height:92px;border-radius:30px;border:3px solid #5f6fe8;padding:0 26px;font:inherit;font-size:34px;font-weight:600;color:#fff;outline:none;
+ background:linear-gradient(#10164a,#1b2466);box-shadow:inset 0 4px 10px rgba(0,0,0,.5);user-select:text;-webkit-user-select:text}
+.inp::placeholder{color:#7f8ad8;font-weight:500}
+.inp:focus{border-color:#ffd63a}
+.hint{font-size:21px;color:#c3d1ff;margin-top:8px}
+.err{font-size:22px;color:#ffb0b8;margin-top:8px;min-height:0}
+#shot{position:relative;min-height:230px;border:4px dashed #8fa0ff;border-radius:34px;background:rgba(10,16,70,.55);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;text-align:center;cursor:pointer}
+#shot.has{border-style:solid;border-color:#1fb878}
+#shot .ic{width:90px;height:90px}
+#shot .ic svg,#shot .ic img{width:90px;height:90px}
+#shot .t1{font-size:30px;font-weight:700}
+#shot .t2{font-size:21px;color:#c3d1ff}
+#prev{display:none;align-items:center;gap:20px;width:100%}
+#shot.has #prev{display:flex}#shot.has .idle{display:none!important}
+#prev img{width:150px;height:150px;object-fit:cover;border-radius:20px;border:3px solid #fff}
+#prev .meta{flex:1;text-align:left;font-size:23px;line-height:1.3;word-break:break-all}
+#prev .rm{display:inline-block;margin-top:8px;padding:6px 18px;border-radius:18px;background:#d8384f;border:2px solid #fff;font-size:21px;font-weight:700}
+#submit{position:relative!important;width:100%;height:110px;margin-top:30px;font-size:44px}
+#reqs .r{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:2px solid rgba(255,255,255,.15);font-size:26px}
+#reqs .r:first-child{border-top:0}
+#reqs .r b{color:#ffd63a;flex:1}
+#reqs .r span.d{font-size:20px;color:#b6c4ff}
+#done{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);width:min(88vw,430px);padding:26px 22px 22px;border-radius:30px;text-align:center;z-index:80;opacity:0;pointer-events:none;transition:.25s;
+ background:linear-gradient(#5fa8f2,#3a74d4 45%,#25479f);border:3px solid #bfe0ff;box-shadow:0 14px 34px rgba(10,10,70,.55)}
+#done.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#done img{width:96px;margin:0 auto 8px}
+#done h3{font-size:26px;margin-bottom:8px}
+#done p{font-size:15px;line-height:1.45;color:#eaf2ff;margin-bottom:8px}
+#doneBtn{margin-top:10px;width:70%;height:50px;border-radius:25px;font-size:20px;font-weight:700;color:#fff;border:3px solid rgba(255,255,255,.75);background:linear-gradient(#72f2a6,#1fb878 55%,#0e9560);box-shadow:0 5px 0 #0a6b43}
+#doneScrim{position:fixed;inset:0;background:rgba(14,10,60,.7);z-index:79;display:none}#doneScrim.on{display:block}
+
+#bal{display:flex;align-items:center;justify-content:space-between;font-size:30px;font-weight:700;margin-bottom:6px}
+#maxb{display:inline-block;margin-left:10px;padding:6px 18px;border-radius:18px;background:linear-gradient(#8bb8ff,#3f79e6);border:2px solid #fff;font-size:21px;font-weight:700;cursor:pointer}
+#warn{display:none;margin:12px 0 0;padding:14px 18px;border-radius:22px;background:rgba(216,56,79,.25);border:2px solid #ff9fb0;font-size:23px;line-height:1.35}
+#cfm{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) scale(.9);width:min(88vw,430px);padding:24px 22px 22px;border-radius:30px;text-align:center;z-index:80;opacity:0;pointer-events:none;transition:.25s;
+ background:linear-gradient(#5fa8f2,#3a74d4 45%,#25479f);border:3px solid #bfe0ff;box-shadow:0 14px 34px rgba(10,10,70,.55)}
+#cfm.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+#cfm h3{font-size:24px;margin-bottom:8px}#cfm p{font-size:16px;line-height:1.5;color:#eaf2ff;margin-bottom:6px}
+#cfm .bs{display:flex;gap:12px;margin-top:12px}#cfm .bs button{flex:1;height:50px;border-radius:25px;font-size:19px;font-weight:700;color:#fff;border:3px solid rgba(255,255,255,.75)}
+#cfNo{background:linear-gradient(#8bb8ff,#3f79e6);box-shadow:0 5px 0 #1c3a8c}#cfYes{background:linear-gradient(#ffe98c,#f6b92f);box-shadow:0 5px 0 #9a5a0a;text-shadow:0 2px 0 #9a5a0a}
+</style>
+</head>
+<body>
+<div id="wrap">
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">WITHDRAW</div>
+ <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
+
+ <div id="col">
+  <div id="pick" class="panel flow">
+   <div class="h t">Select a platform to withdraw</div>
+   <div class="mmx">ငွေထုတ်ရန် platform ရွေးချယ်ပါ</div>
+   <div id="cards"></div>
+  </div>
+
+  <div id="form" class="panel flow">
+   <div class="top"><div class="lg"><img id="fLogo" data-keep alt=""></div><div class="h t" id="fName">Platform</div></div>
+   <div id="bal" class="t"><span>Your balance</span><span class="gold"><span id="balV">0</span> coins</span></div>
+   <div id="warn"></div>
+
+   <div class="lab t" id="nameLab">Your account name</div>
+   <input id="inName" class="inp" maxlength="64" autocomplete="off" placeholder="Enter your account name">
+   <div class="lab t" id="phoneLab">Your phone number</div>
+   <input id="inPhone" class="inp" type="tel" inputmode="tel" maxlength="18" autocomplete="off" placeholder="Enter your phone number">
+   <div class="lab t">Coins to withdraw</div>
+   <input id="inAmt" class="inp" inputmode="numeric" pattern="[0-9]*" maxlength="9" autocomplete="off" placeholder="Enter coin amount">
+   <div class="hint"><span id="amtHint"></span><span id="maxb" class="press t">MAX</span></div>
+   <div class="err" id="amtErr"></div>
+   <button id="submit" class="btn green press off" disabled>SUBMIT</button>
+  </div>
+
+  <div id="reqsBox" class="panel dark flow" style="display:none;padding:22px 26px">
+   <div class="h t" style="font-size:30px;margin-bottom:6px">Your withdrawals</div>
+   <div id="reqs"></div>
+  </div>
+ </div>
+</div>
+</div>
+
+<div id="doneScrim"></div>
+<div id="done"><img src="assets/prize_coins_500.webp?v=2" alt=""><h3 class="t">REQUEST SENT</h3>
+ <p>Your withdrawal request was sent to the admin. You will get a message in Telegram when it is paid.</p>
+ <p class="mm" style="font-size:14px">ငွေထုတ်တောင်းဆိုမှုကို Admin ဆီ ပို့ပြီးပါပြီ။ ငွေပေးချေပြီးရင် Telegram မှာ စာပို့ပေးပါမယ်။</p>
+ <button id="doneBtn" class="press">OK</button></div>
+<div id="cfm"><h3 class="t">Confirm withdrawal</h3><p id="cfmTxt"></p><p style="font-size:14px;color:#cfe0ff">The coins are taken from your balance now. If the admin rejects the request they are returned.</p>
+ <div class="bs"><button id="cfNo" class="press">CANCEL</button><button id="cfYes" class="press">CONFIRM</button></div></div>
+
+<script src="common.js"></script>
+<script>
+const wrap = $('wrap'), stage = $('stage');
+function fit() { const s = Math.min(innerWidth, 900) / 720; stage.style.transform = `scale(${s})`; stage.style.left = Math.max(0, (innerWidth - 720 * s) / 2) + 'px'; sizePad(); }
+function sizePad() { const s = Math.min(innerWidth, 900) / 720; let pad = $('pad'); if (!pad) { pad = document.createElement('div'); pad.id = 'pad'; wrap.appendChild(pad); } pad.style.cssText = `position:absolute;left:0;top:0;width:1px;height:${Math.ceil(stage.offsetHeight * s)}px;pointer-events:none`; }
+fit(); addEventListener('resize', fit); new ResizeObserver(sizePad).observe(stage);
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+
+const nf = n => Number(n).toLocaleString('en-US');
+const LOGO = { 1: 'assets/pay_kpay.webp', 2: 'assets/pay_wave.webp' }, SHORT = { 1: 'KPay', 2: 'Wave' };
+let CFG = null, plat = null, busy = false, balance = 0;
+
+function buildCards() {
+  const box = $('cards'); box.innerHTML = '';
+  CFG.platforms.forEach(a => {
+    const d = document.createElement('div'); d.className = 'adm' + (a.available ? '' : ' off'); d.dataset.k = a.key;
+    d.innerHTML = `<div class="lg"><img data-keep src="${LOGO[a.key] || LOGO[1]}" alt=""></div><div class="nm t">${escHtml(a.label)}</div><div class="sb">${a.available ? 'Tap to choose' : 'Not available'}</div>`;
+    if (a.available) d.onclick = () => choose(a.key);
+    box.appendChild(d);
+  });
+}
+function choose(k) {
+  haptic('light'); plat = CFG.platforms.find(a => a.key === k); const sh = SHORT[k] || 'account';
+  document.querySelectorAll('.adm').forEach(x => x.classList.toggle('sel', x.dataset.k === k));
+  $('fName').textContent = plat.label; $('fLogo').src = LOGO[k] || LOGO[1];
+  $('nameLab').textContent = `Your ${sh} account name`; $('inName').placeholder = `Enter your ${sh} account name`;
+  $('phoneLab').textContent = `Your ${sh} phone number`; $('inPhone').placeholder = `Enter your ${sh} phone number`;
+  $('form').classList.add('on'); check();
+  setTimeout(() => { wrap.scrollTo({ top: $('form').getBoundingClientRect().top + wrap.scrollTop - 12, behavior: 'smooth' }); }, 60);
+}
+const amt = () => { const t = $('inAmt').value.replace(/[^0-9]/g, ''); return t ? Number(t) : 0; };
+const phoneOk = () => /^\+?\d{8,15}$/.test($('inPhone').value.replace(/[\s-]/g, ''));
+function check() {
+  const a = amt(); let msg = '';
+  if (balance < CFG.min) msg = `You need at least ${nf(CFG.min)} coins to withdraw`;
+  else if (a && a < CFG.min) msg = `Minimum ${nf(CFG.min)} coins`;
+  else if (a > balance) msg = 'Not enough coins';
+  $('amtErr').textContent = a ? msg : ''; const w = $('warn'); w.style.display = balance < CFG.min ? 'block' : 'none'; if (balance < CFG.min) w.textContent = msg;
+  const ok = !!plat && $('inName').value.trim().length > 0 && phoneOk() && a >= CFG.min && a <= balance && !busy;
+  const b = $('submit'); b.disabled = !ok; b.classList.toggle('off', !ok); b.classList.toggle('green', ok);
+}
+['inName', 'inPhone'].forEach(i => $(i).oninput = check);
+$('inAmt').oninput = () => { $('inAmt').value = $('inAmt').value.replace(/[^0-9]/g, ''); check(); };
+$('maxb').onclick = () => { $('inAmt').value = balance; check(); };
+
+const ERR = { below_minimum: 'Minimum is 5,000 coins', not_enough_coins: 'Not enough coins', bad_name: 'Enter your account name', bad_phone: 'Check the phone number', admin_unavailable: 'This platform is not available right now',
+  admin_unreachable: 'Could not reach the admin. Please try again later.', too_many_pending: 'You already have 2 withdrawals waiting' };
+$('submit').onclick = () => {
+  $('cfmTxt').textContent = `Withdraw ${nf(amt())} coins to ${plat.label} (${$('inPhone').value.trim()})?`;
+  $('doneScrim').classList.add('on'); $('cfm').classList.add('on');
+};
+$('cfNo').onclick = () => { $('cfm').classList.remove('on'); $('doneScrim').classList.remove('on'); };
+$('cfYes').onclick = async () => {
+  if (busy) return; busy = true; $('cfm').classList.remove('on'); $('submit').textContent = 'SENDING…'; check();
+  try {
+    const r = await api.withdrawSubmit({ admin: plat.key, name: $('inName').value.trim(), phone: $('inPhone').value.trim(), coins: amt() });
+    balance = r.coins != null ? r.coins : balance - amt(); $('coins').textContent = fmt(balance); $('balV').textContent = nf(balance);
+    $('done').classList.add('on'); haptic('success'); $('inAmt').value = ''; loadMine();
+  } catch (e) { $('doneScrim').classList.remove('on'); toast(ERR[e.message] || (e.message === 'timeout' ? 'The server took too long. Check your connection and try again.' : 'Could not send, please try again')); }
+  busy = false; $('submit').textContent = 'SUBMIT'; check();
+};
+$('doneBtn').onclick = () => { $('done').classList.remove('on'); $('doneScrim').classList.remove('on'); wrap.scrollTo({ top: 0, behavior: 'smooth' }); };
+
+const ST = { pending: ['pill orange', 'WAITING'], paid: ['pill green', 'PAID'], rejected: ['pill grey', 'REJECTED'] };
+async function loadMine() {
+  try {
+    const d = await api.withdrawMine(); $('reqsBox').style.display = d.items.length ? 'block' : 'none';
+    $('reqs').innerHTML = d.items.map(x => { const s = ST[x.status] || ST.pending; return `<div class="r"><b>${nf(x.coins)}</b><span class="d">${escHtml(x.platform)} · ${new Date(x.at).toLocaleDateString()}</span><span class="${s[0]}">${s[1]}</span></div>`; }).join('');
+  } catch (e) {}
+}
+(async () => {
+  try {
+    CFG = await api.withdrawConfig(); balance = CFG.coins; $('coins').textContent = fmt(balance); $('balV').textContent = nf(balance);
+    $('amtHint').textContent = `Minimum ${nf(CFG.min)} coins`;
+    buildCards(); loadMine();
+  } catch (e) { toast('Could not load, please try again'); }
+})();
+</script>
+</body>
+</html>

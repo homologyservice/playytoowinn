@@ -81,14 +81,14 @@ const disc = $('disc'), ptr = $('ptr');
 function buildWheel(w) {
   w.forEach((x, i) => {
     const d = document.createElement('div'); d.className = 'wr'; d.style.transform = `rotate(${i * 45}deg)`;
-    d.innerHTML = `<div class="pz"><img src="${IMG(ICON(x))}" alt=""><b class="${x.k === 'coins' ? '' : 'sm'}">${x.k === 'coins' ? x.v : x.k === 'free' ? 'FREE' : 'TRY AGAIN'}</b></div>`;
+    d.innerHTML = `<div class="pz"><img src="${IMG(ICON(x))}" alt=""><b data-notr class="${x.k === 'coins' ? '' : 'sm'}">${x.k === 'coins' ? x.v : x.k === 'free' ? 'FREE' : 'TRY AGAIN'}</b></div>`;
     disc.appendChild(d);
   });
   // legend: every different prize once
   const seen = new Set(), row = $('legRow');
   w.slice().sort((a, b) => (a.v || 0) - (b.v || 0)).forEach(x => {
     const key = x.k + (x.v || ''); if (seen.has(key)) return; seen.add(key);
-    const it = document.createElement('div'); it.className = 'it t';
+    const it = document.createElement('div'); it.className = 'it t'; it.setAttribute('data-notr','');
     it.innerHTML = `<img src="${IMG(ICON(x))}" alt="">${x.k === 'coins' ? x.v : x.k === 'free' ? 'FREE' : 'TRY'}`; row.appendChild(it);
   });
 }

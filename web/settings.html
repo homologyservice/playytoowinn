@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Noto+Sans+Myanmar:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<link rel="stylesheet" href="ui.css">
+<title>Settings</title>
+<style>
+.row{position:absolute;left:24px;width:672px;border-radius:40px;padding:0 26px}
+.row .ic{position:absolute;left:24px;width:76px;height:76px;display:flex;align-items:center;justify-content:center}
+.row .ic img,.row .ic svg{width:70px;height:70px}
+.row .lb{position:absolute;left:120px;font-size:34px;font-weight:700;max-width:330px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .sb{position:absolute;left:120px;font-size:21px;color:#b9c6ff;font-weight:600}
+#rSound{top:136px;height:200px}
+#rSound .ic{top:22px;cursor:pointer}#rSound .lb{top:26px}#rSound .pc{position:absolute;right:30px;top:26px;font-size:34px;font-weight:700;color:#ffd63a}
+#vol{position:absolute;left:34px;top:124px;width:604px;height:54px;-webkit-appearance:none;appearance:none;background:transparent;margin:0;touch-action:pan-y}
+#vol::-webkit-slider-runnable-track{height:22px;border-radius:11px;background:linear-gradient(90deg,#ffd63a var(--p,60%),#2c3680 var(--p,60%));border:2px solid #6f7df0}
+#vol::-moz-range-track{height:18px;border-radius:11px;background:#2c3680;border:2px solid #6f7df0}
+#vol::-moz-range-progress{height:18px;border-radius:11px;background:#ffd63a}
+#vol::-webkit-slider-thumb{-webkit-appearance:none;width:54px;height:54px;margin-top:-18px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff7c8,#ffd63a 55%,#d98a12);border:4px solid #fff;box-shadow:0 5px 10px rgba(0,0,0,.45)}
+#vol::-moz-range-thumb{width:46px;height:46px;border-radius:50%;background:#ffd63a;border:4px solid #fff}
+#rVib{top:352px;height:104px}#rVib .ic{top:14px}#rVib .lb{top:30px}
+#rLang{top:472px;height:150px}#rLang .ic{top:36px}#rLang .lb{top:26px}#rLang .sb{top:74px}
+#rMotion{top:638px;height:124px}#rMotion .ic{top:24px}#rMotion .lb{top:22px}#rMotion .sb{top:66px}
+#rReset{top:778px;height:104px}#rReset .ic{top:14px}#rReset .lb{top:30px}
+#rAbout{top:898px;height:124px}#rAbout .ic{top:24px}#rAbout .lb{top:20px}#rAbout .sb{top:64px}
+.tg{position:absolute;right:26px;width:116px;height:58px;border-radius:29px;background:linear-gradient(#b9c0d6,#7f88a8);border:3px solid rgba(255,255,255,.7);transition:.2s;cursor:pointer}
+.tg::after{content:"";position:absolute;left:4px;top:4px;width:42px;height:42px;border-radius:50%;background:#fff;box-shadow:0 3px 6px rgba(0,0,0,.4);transition:.2s}
+.tg.on{background:linear-gradient(#72f2a6,#1fb878)}.tg.on::after{left:62px}
+/* language switch: two round flags, a gold ring marks the chosen one */
+#lang{position:absolute;right:24px;top:26px;width:228px;height:96px;border-radius:48px;background:linear-gradient(#141a4f,#232c74);border:3px solid #6f7df0;box-shadow:inset 0 4px 10px rgba(0,0,0,.5);cursor:pointer}
+#lang .fl{position:absolute;top:14px;width:62px;height:62px;border-radius:50%;overflow:hidden;transition:.2s;border:3px solid rgba(255,255,255,.85);box-shadow:0 3px 6px rgba(0,0,0,.4)}
+#lang .fl svg{width:100%;height:100%;display:block}
+#lang .f1{left:16px}#lang .f2{right:16px}
+#lang .ring{position:absolute;top:6px;width:80px;height:80px;border-radius:50%;border:5px solid #ffd63a;box-shadow:0 0 16px rgba(255,214,58,.8);transition:.22s;left:7px}
+#lang.en .ring{left:137px}
+#lang .fl{filter:grayscale(.75) brightness(.7)}
+#lang.my .f1,#lang.en .f2{filter:none}
+#btnReset{position:absolute;right:26px;top:14px;width:230px;height:74px;font-size:28px}
+</style>
+</head>
+<body>
+<div id="stage">
+ <button id="back" class="press"><img src="assets/34_back_button.webp" alt="back"></button>
+ <div class="title hdr">SETTINGS</div>
+
+ <div id="rSound" class="row panel dark">
+  <div class="ic press" id="icSound"><svg id="svgSound" viewBox="0 0 64 64" fill="none" stroke="#ffd63a" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 24h12l16-12v40L20 40H8z" fill="#ffd63a22"/><path id="wv1" d="M44 22c4 3 4 17 0 20"/><path id="wv2" d="M51 14c8 7 8 29 0 36"/><path id="mt" d="M44 24l14 16M58 24L44 40" style="display:none" stroke="#ff7a7a"/></svg></div>
+  <div class="lb t">Sound volume</div><div class="pc t" id="volTxt">60%</div>
+  <input id="vol" type="range" min="0" max="100" step="1" value="60" aria-label="Sound volume">
+ </div>
+
+ <div id="rVib" class="row panel dark"><div class="ic"><img src="assets/icon_menu_vibrate.webp?v=2" alt=""></div><div class="lb t">Vibration</div><div class="tg" id="tgVib"></div></div>
+
+ <div id="rLang" class="row panel dark">
+  <div class="ic"><img src="assets/icon_menu_language.webp?v=2" alt=""></div><div class="lb t">Language</div><div class="sb" id="langName" data-notr>English</div>
+  <div id="lang" class="en" role="switch" aria-label="Language">
+   <div class="ring"></div>
+   <div class="fl f1"><svg viewBox="0 0 60 60"><rect width="60" height="20" fill="#FECB00"/><rect y="20" width="60" height="20" fill="#34B233"/><rect y="40" width="60" height="20" fill="#EA2839"/><polygon fill="#fff" points="30,10 34.6,24.2 49.5,24.2 37.5,33 42,47.3 30,38.5 18,47.3 22.5,33 10.5,24.2 25.4,24.2"/></svg></div>
+   <div class="fl f2"><svg viewBox="0 0 60 60"><rect width="60" height="60" fill="#012169"/><path d="M0 0L60 60M60 0L0 60" stroke="#fff" stroke-width="12"/><path d="M0 0L60 60M60 0L0 60" stroke="#C8102E" stroke-width="4"/><path d="M30 0V60M0 30H60" stroke="#fff" stroke-width="20"/><path d="M30 0V60M0 30H60" stroke="#C8102E" stroke-width="12"/></svg></div>
+  </div>
+ </div>
+
+ <div id="rMotion" class="row panel dark"><div class="ic"><svg viewBox="0 0 64 64" fill="none" stroke="#9fc2ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 40c8-18 16-18 24 0s16 18 24 0"/><circle cx="18" cy="16" r="3" fill="#9fc2ff"/><circle cx="48" cy="48" r="3" fill="#9fc2ff"/></svg></div>
+  <div class="lb t">Reduce animations</div><div class="sb">Slower phones run smoother</div><div class="tg" id="tgCalm" style="top:34px"></div></div>
+
+ <div id="rReset" class="row panel dark"><div class="ic"><svg viewBox="0 0 64 64" fill="none" stroke="#ffb0b8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 30a20 20 0 1 1 4 14"/><path d="M12 14v16h16"/></svg></div>
+  <div class="lb t">Reset settings</div><button id="btnReset" class="btn blue press">RESET</button></div>
+
+ <div id="rAbout" class="row panel dark"><div class="ic"><svg viewBox="0 0 64 64" fill="none" stroke="#9fc2ff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"><circle cx="32" cy="32" r="24"/><path d="M32 29v16"/><circle cx="32" cy="20" r="2.5" fill="#9fc2ff"/></svg></div>
+  <div class="lb t">About</div><div class="sb" data-notr id="aboutTxt">Play2Win</div></div>
+</div>
+<script src="common.js"></script>
+<script>
+fitStage($('stage'));
+const home = () => { location.href = 'index.html' + location.search; };
+$('back').onclick = home;
+if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
+
+/* sound */
+const vol = $('vol');
+function paintVol() {
+  const v = SET.vol; vol.value = v; vol.style.setProperty('--p', v + '%'); $('volTxt').textContent = v + '%';
+  $('wv1').style.display = v > 0 ? '' : 'none'; $('wv2').style.display = v > 50 ? '' : 'none'; $('mt').style.display = v === 0 ? '' : 'none';
+}
+vol.oninput = () => { SET.vol = Number(vol.value); paintVol(); };
+vol.onchange = () => Sfx.play('coin');                                   // a sample sound when you let go of the slider
+$('icSound').onclick = () => {                                           // tap the speaker to mute / unmute
+  if (SET.vol > 0) { localStorage.setItem('p2w_vol_prev', String(SET.vol)); SET.vol = 0; }
+  else { SET.vol = Number(localStorage.getItem('p2w_vol_prev')) || 60; Sfx.play('coin'); }
+  paintVol();
+};
+/* switches */
+const paintTg = () => { $('tgVib').classList.toggle('on', SET.vib); $('tgCalm').classList.toggle('on', SET.calm); };
+$('tgVib').onclick = () => { SET.vib = !SET.vib; paintTg(); if (SET.vib) haptic('medium'); };
+$('tgCalm').onclick = () => { SET.calm = !SET.calm; paintTg(); setTimeout(() => location.reload(), 150); };
+/* language: Myanmar (left flag) / English (right flag) */
+const langEl = $('lang');
+function paintLang() { langEl.className = LANG; $('langName').textContent = LANG === 'my' ? 'မြန်မာ' : 'English'; }
+langEl.onclick = () => { SET.lang = LANG === 'my' ? 'en' : 'my'; haptic('medium'); setTimeout(() => location.reload(), 220); };
+$('btnReset').onclick = () => { SET.reset(); toast('Settings reset'); setTimeout(() => location.reload(), 500); };
+$('aboutTxt').textContent = 'Play2Win · v1.0';
+paintVol(); paintTg(); paintLang();
+// nicer pictures if the files exist (otherwise the built-in icons stay)
+[['rMotion', 'icon_set_motion'], ['rReset', 'icon_set_reset'], ['rAbout', 'icon_set_about']].forEach(([row, f]) => {
+  const im = new Image(); im.onload = () => { const ic = document.querySelector('#' + row + ' .ic'); ic.innerHTML = ''; ic.appendChild(im); }; im.src = 'assets/' + f + '.webp?v=2';
+});
+</script>
+</body>
+</html>
