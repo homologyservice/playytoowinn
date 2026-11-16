@@ -1137,6 +1137,88 @@ app.post('/api/hearts/buy', auth, async (req, res) => {
   } catch (e) { fail(res, e); }
 });
 
+
+// =====================================================================
+//  WITHDRAW. The coins are taken from the balance when the request is sent (so they cannot be spent twice).
+//  The admin of that platform (KPAY = admin 1, WAVE PAY = admin 2) gets a message with: Paid / Reject (rejecting gives the coins back).
+// =====================================================================
+const WITHDRAW_MIN = Number(process.env.WITHDRAW_MIN || 5000), MAX_PENDING_WD = 2;
+const wdSchema = new mongoose.Schema({
+  tgId: { type: Number, required: true }, admin: Number, platform: String, accountName: String, phone: String, coins: Number,
+  status: { type: String, default: 'pending' },          // pending | paid | rejected | failed
+  adminChat: Number, adminMsg: Number, createdAt: { type: Date, default: Date.now }, decidedAt: Date,
+});
+wdSchema.index({ tgId: 1, createdAt: -1 });
+const Withdrawal = mongoose.model('Withdrawal', wdSchema);
+const wdView = (w) => ({ id: String(w._id), platform: w.platform, coins: w.coins, status: w.status, at: new Date(w.createdAt).getTime() });
+app.get('/api/withdraw/config', auth, async (req, res) => {
+  try {
+    const u = await upsertUser(req.tg);
+    res.json({ min: WITHDRAW_MIN, coins: u.coins, platforms: [1, 2].map((n) => ({ key: String(n), label: ADMINS[n].pay.label, available: !!ADMINS[n].id })) });
+  } catch (e) { fail(res, e); }
+});
+app.get('/api/withdraw/mine', auth, async (req, res) => {
+  try { const rows = await Withdrawal.find({ tgId: req.tg.id, status: { $ne: 'failed' } }).sort({ createdAt: -1 }).limit(5); res.json({ items: rows.map(wdView) }); }
+  catch (e) { fail(res, e); }
+});
+app.post('/api/withdraw/submit', auth, async (req, res) => {
+  try {
+    const uid = req.tg.id, b = req.body || {};
+    const adm = ADMINS[Number(b.admin)];
+    if (!adm || !adm.id) return res.status(503).json({ error: 'admin_unavailable' });
+    const coins = Number(b.coins), name = clean(b.name, 64), phone = String(b.phone || '').replace(/[\s-]/g, '');
+    if (!Number.isSafeInteger(coins) || coins < WITHDRAW_MIN) return res.status(400).json({ error: 'below_minimum' });
+    if (!name) return res.status(400).json({ error: 'bad_name' });
+    if (!/^\+?\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'bad_phone' });
+    await withLock('wd' + uid, async () => {
+      const me = await upsertUser(req.tg);
+      if (await Withdrawal.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_WD) return res.status(429).json({ error: 'too_many_pending' });
+      const held = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: coins } }, { $inc: { coins: -coins } }, { new: true });   // take the coins first
+      if (!held) return res.status(402).json({ error: 'not_enough_coins' });
+      let w;
+      try {
+        w = await Withdrawal.create({ tgId: uid, admin: Number(adm.key), platform: adm.pay.label, accountName: name, phone, coins });
+        const text = `💸 <b>Withdrawal request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nPlatform: <b>${escHtml(adm.pay.label)}</b>\nAccount name: <b>${escHtml(name)}</b>\nPhone: <code>${escHtml(phone)}</code>\nCoins: <b>${coins}</b>\nRequest: <code>${w._id}</code>`;
+        const sent = await withTimeout(bot.telegram.sendMessage(adm.id, text, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [[{ text: '✅ Paid', callback_data: 'wd:paid:' + w._id }, { text: '❌ Reject (refund)', callback_data: 'wd:no:' + w._id }]] } }), 20000);
+        await Withdrawal.updateOne({ _id: w._id }, { $set: { adminChat: sent.chat.id, adminMsg: sent.message_id } });
+      } catch (e) {
+        console.error('withdraw: admin not reachable:', e && e.message);
+        if (w) await Withdrawal.updateOne({ _id: w._id }, { $set: { status: 'failed' } }).catch(() => {});
+        await User.updateOne({ tgId: uid }, { $inc: { coins } });          // give the coins back
+        return res.status(e && e.message === 'timeout' ? 504 : 502).json({ error: 'admin_unreachable' });
+      }
+      res.json({ ok: true, id: String(w._id), coins: held.coins });
+    });
+  } catch (e) { fail(res, e); }
+});
+async function settleWithdrawal(id, status) {                                // pending -> paid / rejected exactly once; a rejection returns the coins
+  const w = await Withdrawal.findOneAndUpdate({ _id: id, status: 'pending' }, { $set: { status, decidedAt: new Date() } }, { new: true });
+  if (!w) return null;
+  if (status === 'rejected') {
+    try { await User.updateOne({ tgId: w.tgId }, { $inc: { coins: w.coins } }); }
+    catch (e) { await Withdrawal.updateOne({ _id: w._id }, { $set: { status: 'pending' } }); throw e; }
+  }
+  return w;
+}
+bot.action(/^wd:(paid|no):([a-f0-9]{24})$/, async (ctx) => {
+  try {
+    const [, act, id] = ctx.match;
+    const w = await Withdrawal.findById(id);
+    if (!adminOk(w, ctx.from.id)) return ctx.answerCbQuery('Not allowed', { show_alert: true });
+    if (w.status !== 'pending') return ctx.answerCbQuery('Already handled');
+    const done = await settleWithdrawal(id, act === 'paid' ? 'paid' : 'rejected');
+    if (!done) return ctx.answerCbQuery('Already handled');
+    await ctx.answerCbQuery(act === 'paid' ? 'Marked as paid' : 'Rejected, coins returned');
+    const line = act === 'paid' ? `✅ <b>Paid</b>: ${done.coins} coins` : `❌ <b>Rejected</b>: ${done.coins} coins returned to the player`;
+    try {
+      await bot.telegram.editMessageReplyMarkup(done.adminChat, done.adminMsg, undefined, { inline_keyboard: [] });
+      await bot.telegram.editMessageText(done.adminChat, done.adminMsg, undefined, `${line}\nPlayer ID: <code>${done.tgId}</code>\nPlatform: ${escHtml(done.platform)}\nAccount: ${escHtml(done.accountName)} / ${escHtml(done.phone)}`, { parse_mode: 'HTML' });
+    } catch (e) { /* message too old */ }
+    if (act === 'paid') notify(done.tgId, `✅ Your withdrawal of ${done.coins} coins has been paid to your ${done.platform} account.\nသင့် ${done.platform} အကောင့်သို့ coins ${done.coins} ငွေထုတ်ပေးပြီးပါပြီ။`);
+    else notify(done.tgId, `❌ Your withdrawal was rejected and ${done.coins} coins were returned to your balance.\nသင့်ငွေထုတ်တောင်းဆိုမှုကို ပယ်ချပြီး coins ${done.coins} ကို ပြန်လည်ထည့်ပေးလိုက်ပါပြီ။`);
+  } catch (e) { console.error('withdraw action failed', e); ctx.answerCbQuery('Error').catch(() => {}); }
+});
+
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
 app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
   if (res.headersSent) return;
