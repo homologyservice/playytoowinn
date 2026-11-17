@@ -40,9 +40,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
 .strip.spin{animation:spinY .42s linear infinite}
 .strip.blur{filter:none}
 /* lever pull (stick + ball foreshorten and flip down, then spring back) */
-#lever{transform-origin:91.1% 54.3%;will-change:transform}
-@keyframes leverPull{0%{transform:scale(1,1)}28%{transform:scale(1.1,-.5)}55%{transform:scale(1.1,-.5)}78%{transform:scale(1,1.1)}100%{transform:scale(1,1)}}
-#lever.pull{animation:leverPull .8s cubic-bezier(.3,.1,.3,1)}
+#leverStick,#leverBall{will-change:transform;pointer-events:none}
 /* marquee bulbs: two glow groups alternate; faster while spinning / winning */
 .bulbs{mix-blend-mode:screen;pointer-events:none}
 @keyframes bulbA{0%,49%{opacity:1}50%,100%{opacity:.05}}
@@ -88,16 +86,17 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <!-- reels: placed BEHIND the machine, exactly under its transparent window (stage x152-549, y547-785) -->
  <div id="reelView" style="left:152px;top:547px;width:397px;height:238px"></div>
  <!-- machine: its own gold frame covers the reel edges, so symbols look like they are inside -->
- <img id="machine" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_machine_nolever.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
+ <img id="machine" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_machine_nolever.webp?v=3" style="left:20px;top:236px;width:680px" alt="">
  <img id="bulbA" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_a.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
  <img id="bulbB" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_b.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
- <img id="lever" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
+ <img id="leverStick" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_stick.webp?v=3" alt="" style="left:626.12px;top:591.95px;width:55.41px;height:110.81px;transform-origin:13.43px 110.81px">
+ <img id="leverBall" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_ball.webp?v=3" alt="" style="left:605.98px;top:509.68px;width:94.02px;height:82.27px;transform-origin:47.01px 41.14px">
  <button id="leverBtn" class="a" aria-label="Pull lever" style="left:596px;top:498px;width:118px;height:220px;background:none;border:0;padding:0"></button>
  <div id="winline" class="winline a" style="left:160px;top:662px;width:380px;height:7px;border-radius:4px;z-index:2;background:linear-gradient(90deg,rgba(255,214,58,0),#ffd63a 12%,#fff6c2 50%,#ffd63a 88%,rgba(255,214,58,0));box-shadow:0 0 10px 2px rgba(255,214,58,.9),0 0 22px 4px rgba(255,190,40,.55)"></div>
  <script>
  /* if any of the new machine pieces fails to load, show the original one-piece machine instead of an empty window */
  function machineFallback(){ var m=document.getElementById('machine'); if(!m||m.dataset.fb) return; m.dataset.fb=1; m.src='assets/slot_03_machine.webp';
-   ['bulbA','bulbB','lever','leverBtn'].forEach(function(i){var e=document.getElementById(i); if(e) e.style.display='none';}); }
+   ['bulbA','bulbB','leverStick','leverBall','leverBtn'].forEach(function(i){var e=document.getElementById(i); if(e) e.style.display='none';}); }
  </script>
  <div id="slotFx" class="a" style="left:0;top:0;width:720px;height:1400px;pointer-events:none;z-index:5"></div>
  <img id="fx" class="fx a" src="assets/slot_11_fx_win.webp" style="left:200px;top:516px;width:300px;height:300px" alt="">
@@ -313,7 +312,31 @@ async function spinOnce() {   // returns the server result, or null if it failed
 }
 $('spin').onclick = () => { if (!busy && !autoRun) spinOnce(); };
 $('leverBtn').onclick = () => { if (!busy && !autoRun && coins >= bet) spinOnce(); };
-function pullLever() { const l = $('lever'); l.classList.remove('pull'); void l.offsetWidth; l.classList.add('pull'); }
+/* The lever arm is modelled in 3D: it swings (phi degrees, 0 = up) around its base towards the player. Perspective makes the ball bigger and the arm shorter as it comes closer;
+   past 90 degrees the ball goes below the base. Canvas units = the 405x512 machine picture. */
+const LV = { S: 680 / 405, px: 369, py: 278, L: 90.5, Ls: 66, d: 260 };
+function leverPose(phi) {
+  const f = phi * Math.PI / 180, c = Math.cos(f), sn = Math.sin(f), k = z => LV.d / (LV.d - z);
+  const ks = k(LV.Ls * sn), kb = k(LV.L * sn), S = LV.S;
+  $('leverStick').style.transform = `scale(${(1 + ks) / 2},${c * ks})`;                 // shorter (and flips under the base) as it points at the player
+  const bx = LV.px + (377 - LV.px) * kb, by = LV.py - c * LV.L * kb;                    // where the ball centre lands on screen
+  $('leverBall').style.transform = `translate(${(bx - 377) * S}px,${(by - 187.5) * S}px) scale(${kb})`;
+  $('leverBall').style.filter = `brightness(${1 + 0.22 * sn})`; $('leverStick').style.filter = `brightness(${1 + 0.1 * sn})`;
+}
+let leverRaf = 0;
+function pullLever() {
+  cancelAnimationFrame(leverRaf);
+  if (SET.calm) { leverPose(60); setTimeout(() => leverPose(0), 200); return; }
+  const T1 = 260, T2 = 150, T3 = 560, t0 = performance.now(), ease = u => 1 - Math.pow(1 - u, 3);
+  (function frame(now) {
+    const t = now - t0; let phi;
+    if (t < T1) phi = 110 * ease(t / T1);                                               // pull down
+    else if (t < T1 + T2) phi = 110;                                                    // hold
+    else { const u = (t - T1 - T2) / T3; phi = u >= 1 ? 0 : 110 * Math.exp(-5.2 * u) * Math.cos(9.5 * u); }   // spring back with a small overshoot
+    leverPose(phi);
+    if (t < T1 + T2 + T3) leverRaf = requestAnimationFrame(frame); else leverPose(0);
+  })(t0);
+}
 FX.pre(['coin_spin_01','coin_spin_02','coin_spin_03','coin_spin_04','coin_spin_05','coin_spin_06','coin_spin_07','coin_spin_08','fx_shockwave_ring','fx_sparkle_star_a','fx_sparkle_star_b','fx_confetti_01','fx_confetti_02','fx_confetti_03','fx_confetti_04','fx_confetti_05','fx_confetti_06','slot_jackpot_burst','slot_spin_pressed']);
 function winFx(res) {
   const L = $('slotFx'), big = res.mult >= 20 || res.win >= bet * 20;
