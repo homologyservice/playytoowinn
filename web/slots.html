@@ -89,8 +89,8 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
  <img id="machine" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_machine_nolever.webp?v=3" style="left:20px;top:236px;width:680px" alt="">
  <img id="bulbA" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_a.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
  <img id="bulbB" onerror="this.onerror=null;machineFallback()" class="a bulbs" src="assets/slot_bulbs_b.webp?v=2" style="left:20px;top:236px;width:680px" alt="">
- <img id="leverStick" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_stick.webp?v=3" alt="" style="left:626.12px;top:591.95px;width:55.41px;height:110.81px;transform-origin:13.43px 110.81px">
- <img id="leverBall" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_ball.webp?v=3" alt="" style="left:605.98px;top:509.68px;width:94.02px;height:82.27px;transform-origin:47.01px 41.14px">
+ <img id="leverStick" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_stick_hd.webp?v=4" alt="" style="left:610.52px;top:592.08px;width:59.75px;height:110.68px;transform-origin:29.87px 110.68px">
+ <img id="leverBall" onerror="this.onerror=null;machineFallback()" class="a" src="assets/slot_lever_ball_hd.webp?v=4" alt="" style="left:608.03px;top:506.52px;width:93.78px;height:93.78px;transform-origin:46.63px 46.82px">
  <button id="leverBtn" class="a" aria-label="Pull lever" style="left:596px;top:498px;width:118px;height:220px;background:none;border:0;padding:0"></button>
  <div id="winline" class="winline a" style="left:160px;top:662px;width:380px;height:7px;border-radius:4px;z-index:2;background:linear-gradient(90deg,rgba(255,214,58,0),#ffd63a 12%,#fff6c2 50%,#ffd63a 88%,rgba(255,214,58,0));box-shadow:0 0 10px 2px rgba(255,214,58,.9),0 0 22px 4px rgba(255,190,40,.55)"></div>
  <script>
@@ -314,13 +314,13 @@ $('spin').onclick = () => { if (!busy && !autoRun) spinOnce(); };
 $('leverBtn').onclick = () => { if (!busy && !autoRun && coins >= bet) spinOnce(); };
 /* The lever arm is modelled in 3D: it swings (phi degrees, 0 = up) around its base towards the player. Perspective makes the ball bigger and the arm shorter as it comes closer;
    past 90 degrees the ball goes below the base. Canvas units = the 405x512 machine picture. */
-const LV = { S: 680 / 405, px: 369, py: 278, L: 90.5, Ls: 66, d: 260 };
+const LV = { S: 680 / 405, px: 369.5, py: 278, L: 89, Ls: 65.9, d: 300, tilt: 6.5, bx: 378, by: 189 };   // base of the arm, arm length to the ball centre / to the collar, perspective distance, lean of the arm, ball centre at rest
 function leverPose(phi) {
   const f = phi * Math.PI / 180, c = Math.cos(f), sn = Math.sin(f), k = z => LV.d / (LV.d - z);
   const ks = k(LV.Ls * sn), kb = k(LV.L * sn), S = LV.S;
-  $('leverStick').style.transform = `scale(${(1 + ks) / 2},${c * ks})`;                 // shorter (and flips under the base) as it points at the player
-  const bx = LV.px + (377 - LV.px) * kb, by = LV.py - c * LV.L * kb;                    // where the ball centre lands on screen
-  $('leverBall').style.transform = `translate(${(bx - 377) * S}px,${(by - 187.5) * S}px) scale(${kb})`;
+  $('leverStick').style.transform = `rotate(${LV.tilt}deg) scale(${(1 + ks) / 2},${c * ks})`;                 // shorter (and flips under the base) as it points at the player
+  const bx = LV.px + (LV.bx - LV.px) * kb, by = LV.py - c * LV.L * kb;                    // where the ball centre lands on screen
+  $('leverBall').style.transform = `translate(${(bx - LV.bx) * S}px,${(by - LV.by) * S}px) scale(${kb})`;
   $('leverBall').style.filter = `brightness(${1 + 0.22 * sn})`; $('leverStick').style.filter = `brightness(${1 + 0.1 * sn})`;
 }
 let leverRaf = 0;
