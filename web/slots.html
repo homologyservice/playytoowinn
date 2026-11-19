@@ -314,12 +314,12 @@ $('spin').onclick = () => { if (!busy && !autoRun) spinOnce(); };
 $('leverBtn').onclick = () => { if (!busy && !autoRun && coins >= bet) spinOnce(); };
 /* The lever arm is modelled in 3D: it swings (phi degrees, 0 = up) around its base towards the player. Perspective makes the ball bigger and the arm shorter as it comes closer;
    past 90 degrees the ball goes below the base. Canvas units = the 405x512 machine picture. */
-const LV = { S: 680 / 405, px: 369.5, py: 278, L: 89, Ls: 65.9, d: 300, tilt: 6.5, bx: 378, by: 189 };   // base of the arm, arm length to the ball centre / to the collar, perspective distance, lean of the arm, ball centre at rest
+const LV = { S: 680 / 405, px: 369.5, py: 278, L: 89, Ls: 65.9, d: 380, tilt: 6.5, bx: 378, by: 189, drift: -8, max: 130 };   // base of the arm, arm length to the ball centre / to the collar, perspective distance, lean of the arm, ball centre at rest
 function leverPose(phi) {
   const f = phi * Math.PI / 180, c = Math.cos(f), sn = Math.sin(f), k = z => LV.d / (LV.d - z);
   const ks = k(LV.Ls * sn), kb = k(LV.L * sn), S = LV.S;
   $('leverStick').style.transform = `rotate(${LV.tilt}deg) scale(${(1 + ks) / 2},${c * ks})`;                 // shorter (and flips under the base) as it points at the player
-  const bx = LV.px + (LV.bx - LV.px) * kb, by = LV.py - c * LV.L * kb;                    // where the ball centre lands on screen
+  const bx = LV.px + (LV.bx - LV.px) * kb + LV.drift * sn, by = LV.py - c * LV.L * kb;                    // where the ball centre lands on screen
   $('leverBall').style.transform = `translate(${(bx - LV.bx) * S}px,${(by - LV.by) * S}px) scale(${kb})`;
   $('leverBall').style.filter = `brightness(${1 + 0.22 * sn})`; $('leverStick').style.filter = `brightness(${1 + 0.1 * sn})`;
 }
@@ -327,12 +327,12 @@ let leverRaf = 0;
 function pullLever() {
   cancelAnimationFrame(leverRaf);
   if (SET.calm) { leverPose(60); setTimeout(() => leverPose(0), 200); return; }
-  const T1 = 260, T2 = 150, T3 = 560, t0 = performance.now(), ease = u => 1 - Math.pow(1 - u, 3);
+  const T1 = 300, T2 = 170, T3 = 600, t0 = performance.now(), ease = u => 1 - Math.pow(1 - u, 3);
   (function frame(now) {
     const t = now - t0; let phi;
-    if (t < T1) phi = 110 * ease(t / T1);                                               // pull down
-    else if (t < T1 + T2) phi = 110;                                                    // hold
-    else { const u = (t - T1 - T2) / T3; phi = u >= 1 ? 0 : 110 * Math.exp(-5.2 * u) * Math.cos(9.5 * u); }   // spring back with a small overshoot
+    if (t < T1) phi = LV.max * ease(t / T1);                                               // pull down
+    else if (t < T1 + T2) phi = LV.max;                                                    // hold
+    else { const u = (t - T1 - T2) / T3; phi = u >= 1 ? 0 : LV.max * Math.exp(-5.2 * u) * Math.cos(9.5 * u); }   // spring back with a small overshoot
     leverPose(phi);
     if (t < T1 + T2 + T3) leverRaf = requestAnimationFrame(frame); else leverPose(0);
   })(t0);
