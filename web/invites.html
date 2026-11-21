@@ -51,15 +51,15 @@
  <div id="top" class="panel">
   <img id="hero" class="a" src="assets/invites_hero.webp" alt="">
   <div id="h1" class="a t">Invite a friend and get</div>
-  <div id="h2" class="a gold t"><img src="assets/04_gold_coins.webp" alt=""><span id="rw">2000</span></div>
-  <div id="h3" class="a mm">သူငယ်ချင်းတစ်ယောက်ဖိတ်ပြီး <b class="gold" id="rw2">2000</b> coins ရယူပါ</div>
+  <div id="h2" class="a gold t"><img src="assets/04_gold_coins.webp" alt=""><span id="rw">200</span></div>
+  <div id="h3" class="a mm">သူငယ်ချင်းက coins <b class="gold" id="md">1000</b> ဖြည့်ရင် သင့်ကို coins <b class="gold" id="rw2">200</b> ပြန်ရပါမယ်</div>
   <div id="link" class="a">Loading…</div>
   <button id="copyBtn" class="btn gold press">COPY</button>
   <button id="shareBtn" class="btn blue press" aria-label="Share"><svg viewBox="0 0 24 24" fill="#fff"><path d="M21.5 3.2 2.9 10.4c-.9.4-.9 1.6 0 1.9l4.6 1.5 1.8 5.6c.2.7 1.1.9 1.6.4l2.6-2.5 4.7 3.5c.6.4 1.4.1 1.6-.6L22.8 4.4c.2-.9-.6-1.5-1.3-1.2zM9.5 13.2l8.6-5.4-6.7 6.6-.3 3.3-1.6-4.5z"/></svg></button>
   <div class="steps t">
    <div class="s"><img src="assets/step_icon_1_share.webp" alt=""><span>Share your link</span></div><span class="ar">›</span>
-   <div class="s"><img src="assets/step_icon_2_join.webp" alt=""><span>Friend plays a game</span></div><span class="ar">›</span>
-   <div class="s"><img src="assets/step_icon_3_reward.webp" alt=""><span>Claim <b class="gold" id="rw3">2000</b></span></div>
+   <div class="s"><img src="assets/step_icon_2_join.webp" alt=""><span id="stepTxt">Friend adds 1000 coins</span></div><span class="ar">›</span>
+   <div class="s"><img src="assets/step_icon_3_reward.webp" alt=""><span>Claim <b class="gold" id="rw3">200</b></span></div>
   </div>
  </div>
 
@@ -97,6 +97,7 @@ if (tg && tg.BackButton) { tg.BackButton.show(); tg.BackButton.onClick(home); }
 const AV = ['79_avatar_blue','79_avatar_green','79_avatar_pink','79_avatar_purple','79_avatar_red','79_avatar_yellow'];
 const hash = s => { let h = 2166136261; for (const c of String(s)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const ago = ts => { const m = Math.max(1, Math.round((Date.now() - ts) / 60000)); return m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' d ago'; };
+const nf = n => Number(n).toLocaleString('en-US');
 let D = null, tab = 'pending', claiming = false;
 
 function setTab(t) {
@@ -111,7 +112,7 @@ function render() {
   $('tabP').textContent = `PENDING (${D.pending.length})`; $('tabC').textContent = `COMPLETED (${D.completed.length})`;
   const toClaim = D.completed.filter(x => !x.claimed).length;
   if (toClaim) $('tabC').textContent += ' •';
-  $('hint').innerHTML = tab === 'pending' ? 'Friends move to Completed after their first game'
+  $('hint').innerHTML = tab === 'pending' ? `Friends move to Completed after they add ${nf(D.minDeposit)} coins`
     : toClaim ? `<span class="gold">${toClaim} reward${toClaim > 1 ? 's' : ''} ready to claim!</span>` : 'Claim ' + D.reward + ' coins for every friend who played.';
   const list = $('listIn'); list.innerHTML = '';
   const items = tab === 'pending' ? D.pending : D.completed;
@@ -119,7 +120,7 @@ function render() {
   if (!items.length) {
     $('emptyImg').src = `assets/${tab === 'pending' ? 'empty_pending' : 'empty_completed'}.webp`;
     $('emptyT').textContent = tab === 'pending' ? 'No friends waiting' : 'No completed invites yet';
-    $('emptyS').textContent = tab === 'pending' ? 'Share your link to invite a friend' : 'When a friend plays their first game it shows up here';
+    $('emptyS').textContent = tab === 'pending' ? 'Share your link to invite a friend' : `When a friend adds ${nf(D.minDeposit)} coins it shows up here`;
   }
   items.forEach(i => {
     const r = document.createElement('div'); r.className = 'row'; r.dataset.id = i.id;
@@ -130,7 +131,7 @@ function render() {
     else right = `<div class="bt t" data-claim="${escHtml(i.id)}" style="background-image:url(assets/75_button_claim.webp);cursor:pointer"><img src="assets/04_gold_coins.webp" alt="">CLAIM ${D.reward}</div>`;
     r.innerHTML = `<div class="bg" style="background-image:url(assets/${done ? '71_row_card_win' : '72_row_card_loss'}.webp)"></div>
       <img class="av" src="assets/${AV[hash(i.name) % AV.length]}.webp" alt=""><div class="nm t">${escHtml(i.name)}</div>
-      <div class="dt">${done ? 'Played ' : 'Joined '}${ago(i.at)}</div>${right}`;
+      <div class="dt">${done ? '<span>Completed ' + ago(i.at) + '</span>' : '<span>Joined ' + ago(i.at) + '</span><span> · ' + nf(i.deposited || 0) + '/' + nf(D.minDeposit) + '</span>'}</div>${right}`;
     list.appendChild(r);
   });
   list.querySelectorAll('[data-claim]').forEach(b => b.onclick = () => claim(b.dataset.claim));
@@ -170,7 +171,7 @@ $('shareBtn').onclick = () => {
 (async () => {
   try {
     D = await api.invitesState();
-    $('coins').textContent = fmt(D.coins); ['rw', 'rw2', 'rw3'].forEach(i => $(i).textContent = D.reward);
+    $('coins').textContent = fmt(D.coins); ['rw', 'rw2', 'rw3'].forEach(i => $(i).textContent = D.reward); $('md').textContent = nf(D.minDeposit); $('stepTxt').textContent = `Friend adds ${nf(D.minDeposit)} coins`;
     $('link').textContent = D.link ? D.link.replace('https://', '') : 'Link not ready yet';
     $('copyBtn').classList.toggle('off', !D.link); $('shareBtn').classList.toggle('off', !D.link);
     setTab(D.completed.some(x => !x.claimed) ? 'done' : 'pending');

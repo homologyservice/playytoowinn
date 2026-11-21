@@ -68,7 +68,7 @@ const SLOT_BET_PRESETS = [50, 100, 200, 500, 600];
 const SLOT_BET_MIN = 10, SLOT_BET_MAX = 5000;
 
 /* Daily bonus, spin wheel, invites (same numbers as server/index.js; the server decides, these are for display + demo mode) */
-const DAILY_BONUS = 100, SPIN_COST = 100, INVITE_REWARD = 2000, DAY_OFFSET_MIN = 390;   // a "day" ends at Myanmar midnight (UTC+6:30)
+const DAILY_BONUS = 100, SPIN_COST = 100, INVITE_REWARD = 200, INVITE_MIN_DEPOSIT = 1000, DAY_OFFSET_MIN = 390;   // a "day" ends at Myanmar midnight (UTC+6:30)
 const dayKey = (t = Date.now()) => new Date(t + DAY_OFFSET_MIN * 60000).toISOString().slice(0, 10);
 const nextDayAt = () => { const d = new Date(Date.now() + DAY_OFFSET_MIN * 60000); d.setUTCHours(24, 0, 0, 0); return d.getTime() - DAY_OFFSET_MIN * 60000; };
 /* wheel order = clockwise from the top; chances are per mille */
@@ -255,18 +255,18 @@ const Mock = (() => {
       if (prize.k === 'coins') s.coins += amount; if (prize.k === 'free') s.freeSpins = (s.freeSpins || 0) + 1;
       save(s); return { wedge, kind: prize.k, amount, source, ...this._spinView() };
     },
-    _inv() {   // demo friends: two waiting, two completed (one already claimed)
+    _inv() {   // demo friends: two are still adding coins, two completed (one already claimed)
       if (!s.inv) s.inv = { list: [
-        { id: '1', name: 'Aung Kyaw', at: Date.now() - 3600e3 * 5, done: false },
-        { id: '2', name: 'Su Su Hlaing', at: Date.now() - 3600e3 * 26, done: false },
+        { id: '1', name: 'Aung Kyaw', at: Date.now() - 3600e3 * 5, done: false, dep: 400 },
+        { id: '2', name: 'Su Su Hlaing', at: Date.now() - 3600e3 * 26, done: false, dep: 0 },
         { id: '3', name: 'Min Thant', at: Date.now() - 3600e3 * 50, done: true, claimed: false },
         { id: '4', name: 'မောင်မောင်', at: Date.now() - 3600e3 * 90, done: true, claimed: true }] };
       return s.inv;
     },
     async invitesState() {
       const l = this._inv().list; save(s);
-      return { coins: s.coins, reward: INVITE_REWARD, link: 'https://t.me/Play2WinBot?start=inv_123456789',
-        pending: l.filter(x => !x.done).map(x => ({ id: x.id, name: x.name, at: x.at })), completed: l.filter(x => x.done).map(x => ({ id: x.id, name: x.name, claimed: !!x.claimed, at: x.at })) };
+      return { coins: s.coins, reward: INVITE_REWARD, minDeposit: INVITE_MIN_DEPOSIT, link: 'https://t.me/Play2WinBot?start=inv_123456789',
+        pending: l.filter(x => !x.done).map(x => ({ id: x.id, name: x.name, at: x.at, deposited: x.dep || 0 })), completed: l.filter(x => x.done).map(x => ({ id: x.id, name: x.name, claimed: !!x.claimed, at: x.at })) };
     },
     async invitesClaim(id) {
       const f = this._inv().list.find(x => x.id === String(id) && x.done && !x.claimed); if (!f) throw new Error('nothing_to_claim');
@@ -438,7 +438,7 @@ const MY = {
   'PROFILE': 'ပရိုဖိုင်', 'Games played': 'ကစားခဲ့သော ဂိမ်း', 'Friends invited': 'ဖိတ်ထားသော သူငယ်ချင်း', 'Invites completed': 'ပြီးစီးသော ဖိတ်ခေါ်မှု', 'Invite friends': 'သူငယ်ချင်းများကို ဖိတ်ရန်',
   'Could not load the profile': 'ပရိုဖိုင် မရယူနိုင်ပါ',
   /* invites */
-  'INVITES': 'ဖိတ်ခေါ်ရန်', 'Invite a friend and get': 'သူငယ်ချင်း ဖိတ်ပြီး ရယူပါ', 'Share your link': 'လင့်ခ် မျှဝေပါ', 'Friend plays a game': 'သူငယ်ချင်း ဂိမ်းကစားပါ', 'Claim': 'ရယူပါ',
+  'INVITES': 'ဖိတ်ခေါ်ရန်', 'Invite a friend and get': 'သူငယ်ချင်း ဖိတ်ပြီး ရယူပါ', 'Share your link': 'လင့်ခ် မျှဝေပါ', 'More games coming soon': 'ဂိမ်းအသစ်များ မကြာမီ လာမည်', 'Claim': 'ရယူပါ',
   'PENDING': 'စောင့်ဆိုင်းဆဲ', 'COMPLETED': 'ပြီးစီး', 'REWARD!': 'ဆုလာဒ်!', 'CLAIMED': 'ရယူပြီး', 'Already claimed': 'ရယူပြီးသားပါ', 'Link is not ready yet': 'လင့်ခ် မပြင်ဆင်ရသေးပါ',
   'Friends move to Completed after their first game': 'သူငယ်ချင်းက ပထမဆုံးဂိမ်း ကစားပြီးရင် ပြီးစီးထဲ ရောက်ပါမယ်', 'No friends waiting': 'စောင့်ဆိုင်းနေသူ မရှိသေးပါ',
   'Share your link to invite a friend': 'သူငယ်ချင်းကို ဖိတ်ရန် သင့်လင့်ခ်ကို မျှဝေပါ', 'No completed invites yet': 'ပြီးစီးသော ဖိတ်ခေါ်မှု မရှိသေးပါ',
@@ -492,7 +492,10 @@ const MYX = [
   [/^(.+) - coming soon$/, m => tr(m[1]) + ' - မကြာမီ လာမည်'],
   [/^CLAIM (\d[\d,]*)$/, m => 'ရယူမည် ' + m[1]],
   [/^PENDING \((\d+)\)$/, m => 'စောင့်ဆိုင်းဆဲ (' + m[1] + ')'], [/^COMPLETED \((\d+)\)$/, m => 'ပြီးစီး (' + m[1] + ')'],
-  [/^(Joined|Played) (\d+) (min|h|d) ago$/, m => (m[1] === 'Joined' ? 'ဝင်ရောက်ခဲ့သည်' : 'ကစားခဲ့သည်') + ' ' + m[2] + ' ' + ({ min: 'မိနစ်', h: 'နာရီ', d: 'ရက်' })[m[3]] + ' အကြာ'],
+  [/^(Joined|Played|Completed) (\d+) (min|h|d) ago$/, m => ({ Joined: 'ဝင်ရောက်ခဲ့သည်', Played: 'ကစားခဲ့သည်', Completed: 'ပြီးစီးခဲ့သည်' })[m[1]] + ' ' + m[2] + ' ' + ({ min: 'မိနစ်', h: 'နာရီ', d: 'ရက်' })[m[3]] + ' အကြာ'],
+  [/^Friend adds (\d[\d,]*) coins$/, m => 'သူငယ်ချင်း coins ' + m[1] + ' ဖြည့်ပါ'],
+  [/^Friends move to Completed after they add (\d[\d,]*) coins$/, m => 'သူငယ်ချင်းက coins ' + m[1] + ' ဖြည့်ပြီးရင် ပြီးစီးထဲ ရောက်ပါမယ်'],
+  [/^When a friend adds (\d[\d,]*) coins it shows up here$/, m => 'သူငယ်ချင်းက coins ' + m[1] + ' ဖြည့်ပြီးရင် ဒီမှာ ပေါ်လာပါမယ်'],
   [/^(\d+) rewards? ready to claim!$/, m => 'ရယူရန် ဆုလာဒ် ' + m[1] + ' ခု ရှိပါတယ်!'], [/^Claim (\d[\d,]*) coins for every friend who played\.$/, m => 'ကစားခဲ့သော သူငယ်ချင်းတိုင်းအတွက် coins ' + m[1] + ' ရယူပါ။'],
   [/^Cost (\d[\d,]*)$/, m => 'ကုန်ကျ ' + m[1]], [/^Bonus spins: (\d+)$/, m => 'ဘောနပ်စ်လှည့်ခွင့်: ' + m[1]],
   [/^Buy (\d+) hearts?\?$/, m => 'အသဲ ' + m[1] + ' ခု ဝယ်မလား?'], [/^(\d[\d,]*) coins each$/, m => 'တစ်ခုကို coins ' + m[1]], [/^SAVE (\d+)%$/, m => m[1] + '% သက်သာ'],

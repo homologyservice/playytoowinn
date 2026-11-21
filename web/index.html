@@ -73,6 +73,14 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .ptr{transform-origin:50% 22%}
 .wheelwrap.run .ptr{animation:ptrNudge 15s ease-in-out infinite}
 /* logo: letters puff out one by one and spring back */
+#gv{display:none}
+#main.gm #gv{display:block}
+#main.gm .hv{display:none!important}
+#ggrid{position:absolute;left:14px;top:236px;width:692px;display:grid;grid-template-columns:repeat(4,160px);gap:18px 17px}
+.gc{position:relative;width:160px;height:206px;border-radius:30px;overflow:hidden;color:#fff;box-shadow:0 8px 16px rgba(20,10,80,.4),inset 0 4px 10px rgba(255,255,255,.35)}
+.gc img{position:absolute;left:14px;top:12px;width:132px}
+.gc span{position:absolute;left:6px;right:6px;bottom:10px;text-align:center;font-size:22px;line-height:1.15;font-weight:700;text-shadow:0 3px 3px rgba(0,0,0,.45)}
+.gc.fd{background:linear-gradient(#7fd8ff,#2f8be0)}
 #logo{position:absolute;left:148px;top:262px;width:420px;height:280px}
 #logo img{position:absolute;left:0;top:0;width:420px;height:auto}
 @keyframes letterPop{
@@ -176,21 +184,21 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  <button class="a press" data-go="settings" style="left:640px;top:80px"><img style="width:50px" src="assets/07_settings.webp" alt="settings"></button>
 
  <!-- ranking / history -->
- <button class="a glass press t" data-go="ranking" style="left:28px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
+ <button class="a hv glass press t" data-go="ranking" style="left:28px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
   <img class="a" style="left:14px;top:-14px;width:104px" src="assets/08_ranking_trophy.webp" alt=""><span class="a" style="left:130px;right:0;top:15px">Ranking</span></button>
- <button class="a glass press t" data-go="history" style="left:370px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
+ <button class="a hv glass press t" data-go="history" style="left:370px;top:175px;width:322px;height:76px;font-size:36px;font-weight:700">
   <span class="a" style="left:0;width:196px;top:15px;text-align:center">History</span>
   <img class="a" style="right:10px;top:-16px;width:106px" src="assets/09_history_scroll.webp" alt=""></button>
 
  <!-- hero -->
- <button class="a side press t" data-go="spin" id="spinBtn" style="left:0;top:282px"><div class="wheelwrap" id="wheelWrap"><img id="wheelImg" class="wheelimg wheelWiggle" src="assets/10_spin_wheel.webp" alt=""></div><i class="dot"></i><div class="lbl">Spin</div></button>
- <button class="a side press t" data-go="tutorials" style="left:0;top:400px"><img src="assets/12_tutorial_ticket.webp" alt=""><div class="lbl">Tutorials</div></button>
- <div id="logo"><img id="logoWhole" class="logoWhole" src="assets/01_play2win_logo.webp" alt="Play2Win"></div>
- <button class="a side press t" data-go="daily" id="dailyBtn" style="right:0;top:282px"><div class="chestwrap idle" id="chestWrap"><i class="rays"></i><img id="chestImg" src="assets/11_daily_bonus_chest.webp" alt=""><i class="shock"></i><i class="shock s2"></i><i class="flash"></i></div><div class="lbl">Daily<br>Bonus</div></button>
- <button class="a side press t" data-go="firstpay" style="right:0;top:402px"><img class="gift" src="assets/13_gift_box.webp" alt=""><div class="lbl">First Pay<br>pack</div></button>
+ <button class="a hv side press t" data-go="spin" id="spinBtn" style="left:0;top:282px"><div class="wheelwrap" id="wheelWrap"><img id="wheelImg" class="wheelimg wheelWiggle" src="assets/10_spin_wheel.webp" alt=""></div><i class="dot"></i><div class="lbl">Spin</div></button>
+ <button class="a hv side press t" data-go="tutorials" style="left:0;top:400px"><img src="assets/12_tutorial_ticket.webp" alt=""><div class="lbl">Tutorials</div></button>
+ <div id="logo" class="hv"><img id="logoWhole" class="logoWhole" src="assets/01_play2win_logo.webp" alt="Play2Win"></div>
+ <button class="a hv side press t" data-go="daily" id="dailyBtn" style="right:0;top:282px"><div class="chestwrap idle" id="chestWrap"><i class="rays"></i><img id="chestImg" src="assets/11_daily_bonus_chest.webp" alt=""><i class="shock"></i><i class="shock s2"></i><i class="flash"></i></div><div class="lbl">Daily<br>Bonus</div></button>
+ <button class="a hv side press t" data-go="firstpay" style="right:0;top:402px"><img class="gift" src="assets/13_gift_box.webp" alt=""><div class="lbl">First Pay<br>pack</div></button>
 
  <!-- Fly & Dodge banner -->
- <button class="a glass press" data-go="flydodge" style="left:40px;top:527px;width:640px;height:248px;padding:10px;border-radius:40px">
+ <button class="a hv glass press" data-go="flydodge" style="left:40px;top:527px;width:640px;height:248px;padding:10px;border-radius:40px">
   <div class="a" style="left:10px;top:10px;right:10px;bottom:10px;border-radius:30px;overflow:hidden;background:url(assets/28_fly_dodge_sky_background.webp) center 62%/cover">
    <img class="a" style="left:40px;top:-125px;width:200px" src="assets/16_pipe_down.webp" alt="">
    <img class="a" style="left:225px;top:-125px;width:210px" src="assets/16_pipe_down.webp" alt="">
@@ -202,9 +210,16 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
  </button>
 
  <!-- mini games -->
- <button class="a g bomb press" data-go="bomb" style="left:44px;top:797px"><img src="assets/18_bomb_points.webp" alt=""><span>Bomb Points</span></button>
- <button class="a g cards press" data-go="cards" style="left:257px;top:797px"><img src="assets/19_lucky_cards.webp" alt=""><span>Lucky Cards</span></button>
- <button class="a g slot press" data-go="slot" style="left:470px;top:797px"><img src="assets/20_slot_machine.webp" alt=""><span>Slot Machine</span></button>
+ <button class="a hv g bomb press" data-go="bomb" style="left:44px;top:797px"><img src="assets/18_bomb_points.webp" alt=""><span>Bomb Points</span></button>
+ <button class="a hv g cards press" data-go="cards" style="left:257px;top:797px"><img src="assets/19_lucky_cards.webp" alt=""><span>Lucky Cards</span></button>
+ <button class="a hv g slot press" data-go="slot" style="left:470px;top:797px"><img src="assets/20_slot_machine.webp" alt=""><span>Slot Machine</span></button>
+
+ <!-- Games tab: every game is a card of the same size, 4 cards per row (add a game = add one line to GAMES below) -->
+ <div id="gv">
+  <div class="a t" style="left:30px;top:178px;font-size:40px;font-weight:700">Games</div>
+  <div id="ggrid"></div>
+  <div class="a t" style="left:0;width:720px;top:470px;text-align:center;font-size:26px;opacity:.85">More games coming soon</div>
+ </div>
 
  <div id="dPop"><div id="dPanel">
   <img id="dBurst" src="assets/daily_burst.webp" alt="">
@@ -341,11 +356,26 @@ async function openChest(){
 
 /* Tap feedback + navigation */
 try { if (tg && tg.BackButton) tg.BackButton.hide(); } catch (e) {}
+/* Games tab */
+const GAMES = [   // one entry per game; the grid wraps by itself, 4 per row
+  { go: 'flydodge', name: 'Fly & Dodge', img: 'assets/14_fly_dodge_rocket.webp', cls: 'fd', bob: true },
+  { go: 'bomb', name: 'Bomb Points', img: 'assets/18_bomb_points.webp', cls: 'bomb' },
+  { go: 'cards', name: 'Lucky Cards', img: 'assets/19_lucky_cards.webp', cls: 'cards' },
+  { go: 'slot', name: 'Slot Machine', img: 'assets/20_slot_machine.webp', cls: 'slot' },
+];
+$('ggrid').innerHTML = GAMES.map(g => `<button class="gc ${g.cls} press" data-go="${g.go}" data-from="games"><img class="${g.bob ? 'rocketBob' : ''}" src="${g.img}" alt=""><span>${g.name}</span></button>`).join('');
+function setTab(t) {
+  $('main').classList.toggle('gm', t === 'games');
+  document.querySelectorAll('#nav .nb').forEach(b => b.classList.toggle('on', b.dataset.go === (t === 'games' ? 'games' : 'home')));
+}
+if (sessionStorage.getItem('p2w_tab') === 'games') { sessionStorage.removeItem('p2w_tab'); setTab('games'); }   // coming back from a game: stay on the Games tab
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-go]'); if(!b) return;
   const go = b.dataset.go;
   haptic('light');
-  if (go === 'home') return;
+  if (go === 'home') { setTab('home'); return; }
+  if (go === 'games') { setTab('games'); return; }
+  if (b.dataset.from === 'games') sessionStorage.setItem('p2w_tab', 'games');
   if (go === 'daily') { openChest(); return; }
   const sqEl = go === 'spin' ? $('wheelWrap') : b;
   restart(sqEl, 'sq'); sqEl.addEventListener('animationend', ev => { if (ev.animationName === 'tapSquash') sqEl.classList.remove('sq'); }, { once: true });
