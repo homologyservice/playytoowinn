@@ -20,7 +20,8 @@ const START_COINS = 2500, START_HEARTS = 2;   // new users only
 const WAIT_MAX = 5;              // max "slots" a player may have open (waiting matches + prizes not yet claimed)
 const HISTORY_MAX = 10;          // history rows kept per player; the oldest finished row is deleted when an 11th arrives
 const DAILY_BONUS = 100;         // coins, once per calendar day
-const INVITE_REWARD = 2000;      // coins for the inviter, once per friend, after the friend has played a first game
+const INVITE_REWARD = 200;       // coins for the inviter, once per friend
+const INVITE_MIN_DEPOSIT = 1000; // the invited friend must have added (approved top-ups) at least this many coins; then the invite becomes "completed"
 const SPIN_COST = 100;           // coins per extra spin (1 spin a day is free)
 const DAY_OFFSET_MIN = Number(process.env.DAY_OFFSET_MIN || 390);   // "a day" ends at local midnight: default Myanmar time (UTC+6:30)
 let BOT_USERNAME = process.env.BOT_USERNAME || '';
@@ -43,6 +44,7 @@ const User = mongoose.model('User', new mongoose.Schema({
   invitedBy: Number,                                         // tgId of the player whose invite link this player came through
   qualifiedAt: Date,                                         // first time this player started a coin game (= invite becomes "completed")
   inviteClaimed: { type: Boolean, default: false },          // the inviter has taken the invite reward for this player
+  depositTotal: { type: Number, default: 0 },                // coins this player has added through approved top-ups (invite progress)
   plays: { type: Number, default: 0 },                       // games started (profile)
   lastDaily: { type: String, default: '' },                  // day key of the last daily bonus
   lastFreeSpin: { type: String, default: '' },               // day key of the last free daily spin
@@ -146,8 +148,8 @@ bot.start(async (ctx) => {
   }
   return ctx.reply('ကြိုဆိုပါတယ်', Markup.inlineKeyboard([Markup.button.webApp('ဂိမ်းထဲဝင်ရန်', WEBAPP_URL)]));
 });
-// A player has "played" once a coin game was started: counts for the profile and completes an invite.
-const qualify = (uid) => { User.updateOne({ tgId: uid }, { $inc: { plays: 1 }, $min: { qualifiedAt: new Date() } }).catch((e) => console.error('qualify failed', e)); };
+// Counts the games a player started (profile). Invites are completed by top-ups instead, see depositMilestone().
+const qualify = (uid) => { User.updateOne({ tgId: uid }, { $inc: { plays: 1 } }).catch((e) => console.error('qualify failed', e)); };
 const notify = (tgId, text) => bot.telegram.sendMessage(tgId, text).catch(() => {});
 
 // ---------- Small helpers ----------
@@ -408,6 +410,14 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
 
 // ----- admin buttons (only the chosen admin can use them) -----
 const adminOk = (d, from) => d && ADMINS[d.admin] && ADMINS[d.admin].id && ADMINS[d.admin].id === from;
+async function depositMilestone(tgId, amount) {   // an approved top-up counts toward the invite; at INVITE_MIN_DEPOSIT the invite is "completed" and the inviter is told
+  try {
+    const u = await User.findOneAndUpdate({ tgId }, { $inc: { depositTotal: amount } }, { new: true });
+    if (!u || u.depositTotal < INVITE_MIN_DEPOSIT || u.qualifiedAt) return;
+    const r = await User.updateOne({ tgId, $or: [{ qualifiedAt: { $exists: false } }, { qualifiedAt: null }] }, { $set: { qualifiedAt: new Date() } });
+    if (r.modifiedCount && u.invitedBy) notify(u.invitedBy, `🎉 Your friend ${u.name} has added ${INVITE_MIN_DEPOSIT} coins. You can claim ${INVITE_REWARD} coins in Invites.\nသင့်သူငယ်ချင်း ${u.name} က coins ${INVITE_MIN_DEPOSIT} ဖြည့်ပြီးပါပြီ။ Invites ထဲမှာ coins ${INVITE_REWARD} ရယူနိုင်ပါပြီ။`);
+  } catch (e) { console.error('depositMilestone failed', e); }
+}
 async function settleDeposit(id, status, amount) {   // flips pending -> approved/rejected exactly once, then credits
   const set = { status, decidedAt: new Date(), awaitingEdit: false }; if (status === 'approved') set.finalAmount = amount;
   const d = await Deposit.findOneAndUpdate({ _id: id, status: 'pending' }, { $set: set }, { new: true });
@@ -416,6 +426,7 @@ async function settleDeposit(id, status, amount) {   // flips pending -> approve
   if (status === 'approved') {
     try { await User.updateOne({ tgId: d.tgId }, { $inc: { coins: amount } }); }
     catch (e) { await Deposit.updateOne({ _id: d._id }, { $set: { status: 'pending' } }); throw e; }
+    await depositMilestone(d.tgId, amount);
   }
   return d;
 }
@@ -1053,16 +1064,16 @@ app.post('/api/spin/play', auth, async (req, res) => {
 // =====================================================================
 //  INVITES. Link = https://t.me/<bot>?start=inv_<your id>.
 //  pending   = the friend opened the bot through your link
-//  completed = the friend has started their first coin game (see qualify())  -> you can claim INVITE_REWARD once
+//  completed = the friend has added INVITE_MIN_DEPOSIT coins through approved top-ups (see depositMilestone())  -> you can claim INVITE_REWARD once
 // =====================================================================
 app.get('/api/invites/state', auth, async (req, res) => {
   try {
     const uid = req.tg.id;
     const me = await upsertUser(req.tg);
-    const kids = await User.find({ invitedBy: uid }).sort({ createdAt: -1 }).limit(200).select('tgId name createdAt qualifiedAt inviteClaimed').lean();
-    const pending = kids.filter((k) => !k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, at: new Date(k.createdAt).getTime() }));
+    const kids = await User.find({ invitedBy: uid }).sort({ createdAt: -1 }).limit(200).select('tgId name createdAt qualifiedAt inviteClaimed depositTotal').lean();
+    const pending = kids.filter((k) => !k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, at: new Date(k.createdAt).getTime(), deposited: k.depositTotal || 0 }));
     const completed = kids.filter((k) => k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, claimed: !!k.inviteClaimed, at: new Date(k.qualifiedAt).getTime() }));
-    res.json({ coins: me.coins, reward: INVITE_REWARD, link: BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=inv_${uid}` : null, pending, completed });
+    res.json({ coins: me.coins, reward: INVITE_REWARD, minDeposit: INVITE_MIN_DEPOSIT, link: BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=inv_${uid}` : null, pending, completed });
   } catch (e) { fail(res, e); }
 });
 app.post('/api/invites/claim', auth, async (req, res) => {
