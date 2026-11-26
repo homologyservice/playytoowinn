@@ -3,6 +3,10 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const { Telegraf, Markup } = require('telegraf');
+const db = require('./db');
+const settings = require('./settings');
+const store = require('./store');
+const { tx, stat, Shot } = store;
 
 const { BOT_TOKEN, WEBAPP_URL, MONGODB_URI, RENDER_EXTERNAL_URL } = process.env;
 const PORT = process.env.PORT || 3000;
@@ -11,18 +15,15 @@ if (!BOT_TOKEN || !WEBAPP_URL || !MONGODB_URI) {
 }
 
 // ---------- Game constants ----------
-const FEE = 500;                 // entry fee (virtual coins)
-const PRIZE = 900;               // winner prize
+// The numbers that the admin can change live in settings.js (stored in MongoDB). These are read at use time.
+const CFG = settings.get;
+const duel = () => CFG().games.duel;
+const duelPrize = () => settings.duelPrize(duel());
 const CLAIM_MS = 10 * 60 * 1000; // prize can be claimed 10 min after the match is decided
 const STALE_MS = 15 * 60 * 1000; // a run that never reports back is treated as forfeited
 const SWEEP_MS = 30 * 1000;      // how often the stale-run sweep may hit the database
-const START_COINS = 2500, START_HEARTS = 2;   // new users only
 const WAIT_MAX = 5;              // max "slots" a player may have open (waiting matches + prizes not yet claimed)
 const HISTORY_MAX = 10;          // history rows kept per player; the oldest finished row is deleted when an 11th arrives
-const DAILY_BONUS = 100;         // coins, once per calendar day
-const INVITE_REWARD = 200;       // coins for the inviter, once per friend
-const INVITE_MIN_DEPOSIT = 1000; // the invited friend must have added (approved top-ups) at least this many coins; then the invite becomes "completed"
-const SPIN_COST = 100;           // coins per extra spin (1 spin a day is free)
 const DAY_OFFSET_MIN = Number(process.env.DAY_OFFSET_MIN || 390);   // "a day" ends at local midnight: default Myanmar time (UTC+6:30)
 let BOT_USERNAME = process.env.BOT_USERNAME || '';
 
@@ -36,8 +37,10 @@ const User = mongoose.model('User', new mongoose.Schema({
   name: { type: String, default: 'Player' },                 // display name shown to opponents
   languageCode: { type: String, default: '' },
   isPremium: { type: Boolean, default: false },
-  coins: { type: Number, default: START_COINS },
-  hearts: { type: Number, default: START_HEARTS },
+  coins: { type: Number, default: () => CFG().limits.startCoins },
+  hearts: { type: Number, default: () => CFG().limits.startHearts },
+  banned: { type: Boolean, default: false },                 // blocked by an admin
+  banReason: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now },
   lastSeenAt: { type: Date, default: Date.now },
   nameLen: { type: Number, default: 0 },                     // visible characters of `name` (ranking hides 1-letter names)
@@ -75,7 +78,7 @@ matchSchema.index({ 'b.user': 1, status: 1 });
 const Match = mongoose.model('Match', matchSchema);
 
 // ---------- Telegram initData verification ----------
-function verifyInitData(initData) {
+function verifyInitData(initData, maxAgeSec) {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
   if (!hash) return null;
@@ -85,18 +88,30 @@ function verifyInitData(initData) {
   const calc = crypto.createHmac('sha256', secret).update(check).digest('hex');
   if (calc.length !== hash.length || !crypto.timingSafeEqual(Buffer.from(calc), Buffer.from(hash))) return null;
   const authDate = Number(params.get('auth_date'));
-  if (!authDate || Date.now() / 1000 - authDate > 86400) return null;
+  if (!authDate || Date.now() / 1000 - authDate > (maxAgeSec || 86400)) return null;
   let user = null;
   try { user = JSON.parse(params.get('user')); } catch { return null; }
   if (!user || !Number.isSafeInteger(Number(user.id))) return null;
   user.id = Number(user.id);
   return user;
 }
+const ADMIN_IDS = new Set([process.env.ADMIN_ID, process.env.ADMIN1_ID, process.env.ADMIN2_ID, ...String(process.env.ADMIN_IDS || '').split(',')].map((x) => Number(String(x || '').trim())).filter((n) => Number.isSafeInteger(n) && n > 0));
+const isAdmin = (id) => ADMIN_IDS.has(Number(id));
+const banned = new Set();   // tgIds blocked by an admin (kept in memory, loaded at start, updated by the admin panel)
+function gate(u, res) {     // maintenance mode and bans apply to everybody except admins
+  if (isAdmin(u.id)) return true;
+  if (banned.has(u.id)) { res.status(403).json({ error: 'banned' }); return false; }
+  const m = CFG().maintenance;
+  if (m.on) { res.status(503).json({ error: 'maintenance', msg: m.msg }); return false; }
+  return true;
+}
 function auth(req, res, next) {
   const u = verifyInitData(String(req.get('x-init-data') || ''));
   if (!u) return res.status(401).json({ error: 'unauthorized' });
+  if (!gate(u, res)) return;
   req.tg = u; next();
 }
+const gameOn = (name) => (req, res, next) => (CFG().games[name].on || isAdmin(req.tg.id) ? next() : res.status(403).json({ error: 'game_off' }));
 
 // Everything Telegram tells us about the player is stored: numeric id + @username + names.
 const seg = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
@@ -109,6 +124,7 @@ function maskName(name) {          // last 3 characters -> ***; 3 or fewer -> al
 }
 const dayKey = (t = Date.now()) => new Date(t + DAY_OFFSET_MIN * 60000).toISOString().slice(0, 10);
 const nextDayAt = () => { const d = new Date(Date.now() + DAY_OFFSET_MIN * 60000); d.setUTCHours(24, 0, 0, 0); return d.getTime() - DAY_OFFSET_MIN * 60000; };
+store.setDayKey(() => dayKey());
 function identity(tgUser) {
   const firstName = String(tgUser.first_name || '').trim().slice(0, 64);
   const lastName = String(tgUser.last_name || '').trim().slice(0, 64);
@@ -147,6 +163,12 @@ bot.start(async (ctx) => {
     } catch (e) { console.error('start failed', e); }
   }
   return ctx.reply('ကြိုဆိုပါတယ်', Markup.inlineKeyboard([Markup.button.webApp('ဂိမ်းထဲဝင်ရန်', WEBAPP_URL)]));
+});
+// /adminlogin opens the admin panel (admins only; anyone else gets no reply, so the command is not revealed)
+bot.command('adminlogin', async (ctx) => {
+  if (!ctx.from || !isAdmin(ctx.from.id)) return;
+  console.log('adminlogin', ctx.from.id);
+  return ctx.reply('🔐 Admin panel', Markup.inlineKeyboard([Markup.button.webApp('Open admin panel', WEBAPP_URL.replace(/\/$/, '') + '/admin')]));
 });
 // Counts the games a player started (profile). Invites are completed by top-ups instead, see depositMilestone().
 const qualify = (uid) => { User.updateOne({ tgId: uid }, { $inc: { plays: 1 } }).catch((e) => console.error('qualify failed', e)); };
@@ -189,7 +211,7 @@ async function removeSide(m, s) {
   const prize = m[s].prize || 0;
   if (prize > 0 && !m[s].claimed) {
     const g = await Match.updateOne({ _id: m._id, [`${s}.claimed`]: { $ne: true } }, { $set: { [`${s}.claimed`]: true } });
-    if (g.modifiedCount) await User.updateOne({ tgId: m[s].user }, { $inc: { coins: prize } });
+    if (g.modifiedCount) { await User.updateOne({ tgId: m[s].user }, { $inc: { coins: prize } }); tx(m[s].user, 'duel_prize', prize, null, m._id, 'duel'); stat('duel', 0, prize); }
   }
   if (!m[o].user || m[o].gone) await Match.deleteOne({ _id: m._id });                       // nobody else needs it
   else await Match.updateOne({ _id: m._id }, { $set: { [`${s}.gone`]: true } });            // the other player still sees it
@@ -228,7 +250,7 @@ function decide(aScore, bScore, bForfeit) {
   if (aScore < bScore) return { a: 'loss', b: 'win' };
   return { a: 'draw', b: 'draw' };
 }
-const prizeFor = (r) => (r === 'win' ? PRIZE : r === 'draw' ? FEE : 0);
+const prizeFor = (r) => (r === 'win' ? duelPrize() : r === 'draw' ? duel().fee : 0);
 
 // Finish match when player B is done. Guarded so it can only happen once.
 async function completeMatch(m, bScore, bForfeit) {
@@ -244,7 +266,7 @@ async function completeMatch(m, bScore, bForfeit) {
     { new: true }
   );
   if (upd) {
-    const msg = r.a === 'win' ? `Fly & Dodge: you WON ${upd.a.score} - ${bForfeit ? 0 : bScore}! Claim ${PRIZE} coins in History after 10 minutes.`
+    const msg = r.a === 'win' ? `Fly & Dodge: you WON ${upd.a.score} - ${bForfeit ? 0 : bScore}! Claim ${duelPrize()} coins in History after 10 minutes.`
               : r.a === 'draw' ? `Fly & Dodge: it's a draw (${upd.a.score} - ${bScore}). Your entry fee comes back, claim it in History after 10 minutes.`
               : `Fly & Dodge: you lost ${upd.a.score} - ${bScore}.`;
     notify(upd.a.user, msg);
@@ -290,10 +312,8 @@ const envAdmin = (n) => ({ key: String(n), id: Number(process.env['ADMIN' + n + 
   // what the player sees after choosing this platform: "KPAY - 09xxxxxxx / Name : xxxxx"
   pay: { label: process.env['ADMIN' + n + '_PAY_LABEL'] || PAY_LABEL[n], number: process.env['ADMIN' + n + '_PAY_NUMBER'] || '09xxxxxxxxx', name: process.env['ADMIN' + n + '_PAY_NAME'] || 'xxxxx' } });
 const ADMINS = { 1: envAdmin(1), 2: envAdmin(2) };
-const DEPOSIT_MIN = Number(process.env.DEPOSIT_MIN || 100), DEPOSIT_MAX = Number(process.env.DEPOSIT_MAX || 1000000);
 const SHOT_MIN_KB = 50, SHOT_MAX_MB = 5;                 // what the page tells the player (checked on the original file in the page)
 const SHOT_FLOOR_BYTES = 10 * 1024, SHOT_CEIL_BYTES = 6 * 1024 * 1024;   // hard limits the server enforces on the uploaded (already compressed) image
-const MAX_PENDING_DEPOSITS = 3;
 const depositSchema = new mongoose.Schema({
   tgId: { type: Number, required: true }, admin: { type: Number, required: true }, username: String,
   amount: { type: Number, required: true }, finalAmount: Number,
@@ -318,14 +338,12 @@ const depView = (d) => ({ id: String(d._id), admin: d.admin, amount: d.finalAmou
 //    This avoids uploading a file from this server, which hung on some hosts.
 // 2) If that does not work, the file is uploaded directly with Node's own fetch/FormData.
 const PUBLIC_URL = String(process.env.PUBLIC_URL || RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
-const shotSchema = new mongoose.Schema({ depId: mongoose.Schema.Types.ObjectId, token: { type: String, unique: true }, mime: String, data: Buffer, createdAt: { type: Date, default: Date.now, expires: 7 * 86400 } });
-const DepositShot = mongoose.model('DepositShot', shotSchema);
 const MIME = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
 app.get('/api/deposit/shot/:file', async (req, res) => {
   try {
     const token = String(req.params.file || '').replace(/\.\w{2,4}$/, '');
     if (!/^[a-f0-9]{48}$/.test(token)) return res.sendStatus(404);
-    const row = await DepositShot.findOne({ token });
+    const row = await Shot.findOne({ token });
     if (!row) return res.sendStatus(404);
     res.set({ 'Content-Type': row.mime, 'Cache-Control': 'private, max-age=300', 'X-Content-Type-Options': 'nosniff' }).send(row.data);
   } catch (e) { fail(res, e); }
@@ -349,7 +367,7 @@ async function sendShotToAdmin(adminId, depId, buf, kind, caption, markup) {
   if (PUBLIC_URL) {
     try {
       const token = crypto.randomBytes(24).toString('hex');
-      await DepositShot.create({ depId, token, mime: MIME[kind], data: buf });
+      await Shot.pick(['img', 'hist', 'main']).create({ depId, token, mime: MIME[kind], data: buf });
       const sent = await withTimeout(bot.telegram.sendPhoto(adminId, `${PUBLIC_URL}/api/deposit/shot/${token}.jpg`, { caption, parse_mode: 'HTML', reply_markup: markup }), 20000);
       console.log('deposit: delivered to admin (by link)');
       return sent;
@@ -364,7 +382,7 @@ async function sendShotToAdmin(adminId, depId, buf, kind, caption, markup) {
 }
 app.get('/api/deposit/config', auth, (req, res) => {
   res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id, pay: ADMINS[n].pay })),
-    min: DEPOSIT_MIN, max: DEPOSIT_MAX, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
+    min: CFG().limits.depositMin, max: CFG().limits.depositMax, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
 });
 app.get('/api/deposit/mine', auth, async (req, res) => {
   try { const rows = await Deposit.find({ tgId: req.tg.id, status: { $ne: 'failed' } }).sort({ createdAt: -1 }).limit(5); res.json({ items: rows.map(depView) }); }
@@ -377,7 +395,7 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
     const adm = ADMINS[Number(b.admin)];
     if (!adm || !adm.id) return res.status(503).json({ error: 'admin_unavailable' });
     const amount = Number(b.amount), username = clean(b.username, 64);
-    if (!Number.isSafeInteger(amount) || amount < DEPOSIT_MIN || amount > DEPOSIT_MAX) return res.status(400).json({ error: 'bad_amount' });
+    if (!Number.isSafeInteger(amount) || amount < CFG().limits.depositMin || amount > CFG().limits.depositMax) return res.status(400).json({ error: 'bad_amount' });
     if (!username) return res.status(400).json({ error: 'bad_username' });
     const m = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(String(b.image || ''));
     if (!m) return res.status(400).json({ error: 'bad_image' });
@@ -387,7 +405,7 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
     const kind = imgKind(buf); if (!kind) return res.status(400).json({ error: 'bad_image' });
     await withLock('dep' + uid, async () => {
       const me = await upsertUser(req.tg);
-      if (await Deposit.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_DEPOSITS) return res.status(429).json({ error: 'too_many_pending' });
+      if (await Deposit.countDocuments({ tgId: uid, status: 'pending' }) >= CFG().limits.maxPendingDeposits) return res.status(429).json({ error: 'too_many_pending' });
       const d = await Deposit.create({ tgId: uid, admin: adm.key ? Number(adm.key) : 1, username, amount });
       const caption = `💰 <b>Coin top-up request</b>\nPlayer: ${escHtml(me.name)}${me.username ? ' (@' + escHtml(me.username) + ')' : ''}\nTelegram ID: <code>${uid}</code>\nPlatform: <b>${escHtml(adm.pay.label)}</b>\nPayer account name: <b>${escHtml(username)}</b>\nAmount asked: <b>${amount}</b> coins\nRequest: <code>${d._id}</code>`;
       console.log('deposit: sending screenshot', Math.round(buf.length / 1024) + 'KB', 'player', uid, 'admin', adm.key);
@@ -399,7 +417,7 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
       } catch (e) {
         console.error('deposit: admin not reachable:', e && e.message);
         await Deposit.updateOne({ _id: d._id }, { $set: { status: 'failed' } });
-        await DepositShot.deleteMany({ depId: d._id }).catch(() => {});
+        await Shot.deleteMany({ depId: d._id }).catch(() => {});
         const timeout = e && e.message === 'timeout';
         return res.status(timeout ? 504 : 502).json({ error: timeout ? 'admin_timeout' : 'admin_unreachable' });
       }
@@ -410,22 +428,23 @@ app.post('/api/deposit/submit', auth, express.json({ limit: '9mb' }), async (req
 
 // ----- admin buttons (only the chosen admin can use them) -----
 const adminOk = (d, from) => d && ADMINS[d.admin] && ADMINS[d.admin].id && ADMINS[d.admin].id === from;
-async function depositMilestone(tgId, amount) {   // an approved top-up counts toward the invite; at INVITE_MIN_DEPOSIT the invite is "completed" and the inviter is told
+async function depositMilestone(tgId, amount) {   // an approved top-up counts toward the invite; at CFG().limits.inviteMinDeposit the invite is "completed" and the inviter is told
   try {
     const u = await User.findOneAndUpdate({ tgId }, { $inc: { depositTotal: amount } }, { new: true });
-    if (!u || u.depositTotal < INVITE_MIN_DEPOSIT || u.qualifiedAt) return;
+    if (!u || u.depositTotal < CFG().limits.inviteMinDeposit || u.qualifiedAt) return;
     const r = await User.updateOne({ tgId, $or: [{ qualifiedAt: { $exists: false } }, { qualifiedAt: null }] }, { $set: { qualifiedAt: new Date() } });
-    if (r.modifiedCount && u.invitedBy) notify(u.invitedBy, `🎉 Your friend ${u.name} has added ${INVITE_MIN_DEPOSIT} coins. You can claim ${INVITE_REWARD} coins in Invites.\nသင့်သူငယ်ချင်း ${u.name} က coins ${INVITE_MIN_DEPOSIT} ဖြည့်ပြီးပါပြီ။ Invites ထဲမှာ coins ${INVITE_REWARD} ရယူနိုင်ပါပြီ။`);
+    if (r.modifiedCount && u.invitedBy) notify(u.invitedBy, `🎉 Your friend ${u.name} has added ${CFG().limits.inviteMinDeposit} coins. You can claim ${CFG().limits.inviteReward} coins in Invites.\nသင့်သူငယ်ချင်း ${u.name} က coins ${CFG().limits.inviteMinDeposit} ဖြည့်ပြီးပါပြီ။ Invites ထဲမှာ coins ${CFG().limits.inviteReward} ရယူနိုင်ပါပြီ။`);
   } catch (e) { console.error('depositMilestone failed', e); }
 }
 async function settleDeposit(id, status, amount) {   // flips pending -> approved/rejected exactly once, then credits
   const set = { status, decidedAt: new Date(), awaitingEdit: false }; if (status === 'approved') set.finalAmount = amount;
   const d = await Deposit.findOneAndUpdate({ _id: id, status: 'pending' }, { $set: set }, { new: true });
   if (!d) return null;
-  DepositShot.deleteMany({ depId: d._id }).catch(() => {});
+  Shot.deleteMany({ depId: d._id }).catch(() => {});
   if (status === 'approved') {
     try { await User.updateOne({ tgId: d.tgId }, { $inc: { coins: amount } }); }
     catch (e) { await Deposit.updateOne({ _id: d._id }, { $set: { status: 'pending' } }); throw e; }
+    tx(d.tgId, 'deposit', amount, null, d._id, '', d.username || '');
     await depositMilestone(d.tgId, amount);
   }
   return d;
@@ -467,7 +486,7 @@ bot.on('text', async (ctx, next) => {
     const txt = ctx.message.text.trim().replace(/[, ]/g, '');
     if (!/^\d{1,9}$/.test(txt)) return ctx.reply('Please send a whole number, for example 300.');
     const amount = Number(txt);
-    if (amount < 1 || amount > DEPOSIT_MAX) return ctx.reply(`The amount must be between 1 and ${DEPOSIT_MAX}.`);
+    if (amount < 1 || amount > CFG().limits.depositMax) return ctx.reply(`The amount must be between 1 and ${CFG().limits.depositMax}.`);
     const done = await settleDeposit(d._id, 'approved', amount);
     if (!done) return ctx.reply('That request was already handled.');
     await ctx.reply(`✅ ${amount} coins added to player ${done.tgId}.`);
@@ -483,14 +502,16 @@ app.post('/api/auth', async (req, res) => {
   try {
     const tgUser = verifyInitData(String((req.body && req.body.initData) || ''));
     if (!tgUser) return res.status(401).json({ error: 'invalid initData' });
+    if (!gate(tgUser, res)) return;
     const u = await upsertUser(tgUser);
     const slots = await slotInfo(tgUser.id);
-    res.json({ name: u.name, username: u.username, coins: u.coins, hearts: u.hearts, ...slots });
+    const off = Object.keys(CFG().games).filter((k) => !CFG().games[k].on);
+    res.json({ name: u.name, username: u.username, coins: u.coins, hearts: u.hearts, fee: duel().fee, prize: duelPrize(), off, admin: isAdmin(tgUser.id), ...slots });
   } catch (e) { fail(res, e); }
 });
 
 // Start a run: check the slot limit, charge the entry fee, then join someone's saved score or open a new match.
-app.post('/api/duel/start', auth, async (req, res) => {
+app.post('/api/duel/start', auth, gameOn('duel'), async (req, res) => {
   try {
     const uid = req.tg.id;
     await withLock('u' + uid, async () => {
@@ -501,9 +522,9 @@ app.post('/api/duel/start', auth, async (req, res) => {
       const slots = await slotInfo(uid);
       if (slots.blocked) return res.status(403).json({ error: slots.reason, ...slots });
 
-      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: FEE } }, { $inc: { coins: -FEE } }, { new: true });
+      const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: duel().fee } }, { $inc: { coins: -duel().fee } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
-      qualify(uid);
+      qualify(uid); tx(uid, 'duel_fee', -duel().fee, paid.coins, null, 'duel'); stat('duel', duel().fee, 0);
 
       try {
         const now = new Date();
@@ -520,7 +541,8 @@ app.post('/api/duel/start', auth, async (req, res) => {
         const m = await Match.create({ a: { user: uid, username: user.username, name: user.name, status: 'playing', startedAt: now } });
         res.json({ matchId: String(m._id), seed: String(m._id), role: 'a', opponent: null, coins: paid.coins, hearts: paid.hearts });
       } catch (e) {
-        await User.updateOne({ tgId: uid }, { $inc: { coins: FEE } });   // refund if matching failed
+        await User.updateOne({ tgId: uid }, { $inc: { coins: duel().fee } });   // refund if matching failed
+        tx(uid, 'refund', duel().fee, null, null, 'duel'); stat('duel', -duel().fee, 0);
         throw e;
       }
     });
@@ -627,6 +649,7 @@ app.post('/api/duel/claim', auth, async (req, res) => {
     const upd = await Match.updateOne({ _id: m._id, [`${mine}.claimed`]: { $ne: true } }, { $set: { [`${mine}.claimed`]: true } });
     if (!upd.modifiedCount) return res.status(409).json({ error: 'already_claimed' });
     const u = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: prize } }, { new: true });
+    tx(uid, 'duel_prize', prize, u.coins, m._id, 'duel'); stat('duel', 0, prize);
     const slots = await slotInfo(uid);
     res.json({ coins: u.coins, ...slots });
   } catch (e) { fail(res, e); }
@@ -636,16 +659,12 @@ app.post('/api/duel/claim', auth, async (req, res) => {
 // =====================================================================
 //  BOMB POINTS (solo, virtual coins only). The server owns the bombs, the client only sees tiles it picked.
 // =====================================================================
-const BOMB_ENTRIES = [1000, 2000, 5000, 15000];
-const BOMB_MIN = 3, BOMB_MAX = 15, BOMB_TILES = 16;
-// 13 steps, never selectable: it just rises with each safe pick (2 decimals max, so prizes are exact).
-// Checked against the real odds of the 16-tile board: for EVERY (bombs, safe picks) pair the expected return is <= ~90%
-// of the stake, so the house always keeps a margin and no bomb count can be farmed. Keep this array identical in web/common.js
-// (the page also reads it from the server, so a stale copy there can never show a wrong number).
-const BOMB_LADDER = [1.10, 1.20, 1.30, 1.42, 1.55, 1.72, 1.95, 2.25, 2.65, 3.15, 3.75, 4.40, 5.00];
-const BOMB_HISTORY_MAX = 10;
-// bombs=3 starts at step 1 (1.10x), 4 bombs at step 2 (1.20x) ...; every further safe pick climbs one step (capped at the last step)
-const bombMult = (bombs, safe) => safe < 1 ? 1 : BOMB_LADDER[Math.min(BOMB_LADDER.length - 1, bombs - BOMB_MIN + safe - 1)];
+const BOMB_TILES = 16;
+// Multipliers come from the real odds of the 16-tile board: (1 - edge) / P(surviving k safe picks), so cashing out at ANY step returns (1 - edge) of the stake on average.
+// The table is rebuilt only when the admin changes the Bomb settings. It also caps the multiplier (maxMult), and the round cashes out by itself at the cap.
+let _bt = { k: '', t: null };
+function bombTbl() { const g = CFG().games.bomb, k = JSON.stringify([g.edge, g.minBombs, g.maxBombs, g.maxMult]); if (_bt.k !== k) _bt = { k, t: settings.bombTable(g) }; return _bt.t; }
+const bombMult = (bombs, safe) => { if (safe < 1) return 1; const row = bombTbl()[bombs] || bombTbl()[CFG().games.bomb.minBombs]; return row[Math.min(row.length - 1, safe - 1)]; };
 // TOTAL paid back at cash-out = entry x multiplier (the entry is included, profit = prize - entry).
 // Integer maths on hundredths: 5000 * 1.15 must be 5750, not 5749.999...
 const bombPrize = (entry, mult) => Math.floor(entry * Math.round(mult * 100) / 100);
@@ -685,6 +704,7 @@ async function bombPay(roundId, uid, prize) {
   if (!g.modifiedCount) return;                     // already paid
   try { await User.updateOne({ tgId: uid }, { $inc: { coins: prize } }); }
   catch (e) { await BombRound.updateOne({ _id: roundId }, { $set: { unpaid: true } }); throw e; }   // credit failed: stays payable
+  tx(uid, 'bomb_win', prize, null, roundId, 'bomb'); stat('bomb', 0, prize);
 }
 async function bombPayPending(uid) {                // finishes any payout that was interrupted (server restart, DB hiccup)
   const rows = await BombRound.find({ tgId: uid, status: 'cashed', unpaid: true });
@@ -705,14 +725,15 @@ app.get('/api/bomb/state', auth, async (req, res) => {
     await bombPayPending(req.tg.id);
     const u = await User.findOne({ tgId: req.tg.id });
     const r = await BombRound.findOne({ tgId: req.tg.id, status: 'active' });
-    res.json({ coins: u.coins, round: r ? bombView(r) : null, ladder: BOMB_LADDER, entries: BOMB_ENTRIES });
+    res.json({ coins: u.coins, round: r ? bombView(r) : null, table: bombTbl(), entries: CFG().games.bomb.entries, minBombs: CFG().games.bomb.minBombs, maxBombs: CFG().games.bomb.maxBombs, edge: CFG().games.bomb.edge });
   } catch (e) { fail(res, e); }
 });
 
-app.post('/api/bomb/start', auth, async (req, res) => {
+app.post('/api/bomb/start', auth, gameOn('bomb'), async (req, res) => {
   try {
     const uid = req.tg.id, entry = Number(req.body && req.body.entry), bombs = Number(req.body && req.body.bombs);
-    if (!BOMB_ENTRIES.includes(entry) || !Number.isInteger(bombs) || bombs < BOMB_MIN || bombs > BOMB_MAX) return res.status(400).json({ error: 'bad_request' });
+    const BG = CFG().games.bomb;
+    if (!BG.entries.includes(entry) || !Number.isInteger(bombs) || bombs < BG.minBombs || bombs > BG.maxBombs) return res.status(400).json({ error: 'bad_request' });
     await withLock('b' + uid, async () => {
       await upsertUser(req.tg);
       await bombPayPending(uid);
@@ -720,12 +741,13 @@ app.post('/api/bomb/start', auth, async (req, res) => {
       if (open) return res.status(409).json({ error: 'round_active', round: bombView(open) });
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: entry } }, { $inc: { coins: -entry } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
-      qualify(uid);
+      qualify(uid); tx(uid, 'bomb_bet', -entry, paid.coins, null, 'bomb'); stat('bomb', entry, 0);
       try {
         const r = await BombRound.create({ tgId: uid, entry, bombs, mines: bombShuffle(BOMB_TILES, bombs) });
         res.json({ coins: paid.coins, round: bombView(r) });
       } catch (e) {
         await User.updateOne({ tgId: uid }, { $inc: { coins: entry } });   // never keep the fee if the round could not be created
+        tx(uid, 'refund', entry, null, null, 'bomb'); stat('bomb', -entry, 0);
         throw e;
       }
     });
@@ -751,7 +773,7 @@ app.post('/api/bomb/pick', auth, async (req, res) => {
       const safe = r.safe + 1, mult = bombMult(r.bombs, safe), prize = bombPrize(r.entry, mult);
       const upd = await BombRound.updateOne({ _id: r._id, status: 'active', safe: r.safe }, { $set: { safe }, $addToSet: { picks: tile } });
       if (!upd.modifiedCount) return res.status(409).json({ error: 'not_active' });
-      if (safe >= BOMB_TILES - r.bombs) {   // every safe tile found: cash out automatically
+      if (safe >= BOMB_TILES - r.bombs || mult >= CFG().games.bomb.maxMult) {   // every safe tile found, or the multiplier cap reached: cash out automatically
         const paid = await bombCashRound({ _id: r._id, tgId: uid, entry: r.entry, bombs: r.bombs, safe }, now);
         if (paid == null) return res.status(409).json({ error: 'not_active' });
         const u = await User.findOne({ tgId: uid });
@@ -795,11 +817,11 @@ app.get('/api/bomb/history', auth, async (req, res) => {
 //  Card returns are percent of the bet (integers, so every prize is exact).
 //  Expected return = (0 + 0 + 50 + 100 + 300) / 5 = 90% of the bet, so the house keeps a margin.
 // =====================================================================
-const LUCKY_TIERS = [200, 500, 1000, 3000, 5000];
-const LUCKY_CARDS = { skull: 0, bronze: 50, silver: 100, gold: 300 };   // percent of the bet that comes back
+// bet sizes and card returns come from the admin settings: gold = 500 x (1 - edge) - 150 percent, so the expected return is exactly (1 - edge)
+const luckyCards = () => settings.luckyCards(CFG().games.lucky);
 const LUCKY_DECK = ['skull', 'skull', 'bronze', 'silver', 'gold'];
 const LUCKY_HISTORY_MAX = 10;
-const luckyPrize = (bet, kind) => Math.floor(bet * LUCKY_CARDS[kind] / 100);
+const luckyPrize = (bet, kind) => Math.floor(bet * luckyCards()[kind] / 100);
 
 const luckySchema = new mongoose.Schema({
   tgId: { type: Number, required: true },
@@ -831,6 +853,7 @@ async function luckyPay(roundId, uid, prize) {
   if (!g.modifiedCount) return;
   try { await User.updateOne({ tgId: uid }, { $inc: { coins: prize } }); }
   catch (e) { await LuckyRound.updateOne({ _id: roundId }, { $set: { unpaid: true } }); throw e; }
+  tx(uid, 'lucky_win', prize, null, roundId, 'lucky'); stat('lucky', 0, prize);
 }
 async function luckyPayPending(uid) {   // finishes any payout that was interrupted
   const rows = await LuckyRound.find({ tgId: uid, status: 'done', unpaid: true });
@@ -843,14 +866,14 @@ app.get('/api/lucky/state', auth, async (req, res) => {
     await luckyPayPending(req.tg.id);
     const u = await User.findOne({ tgId: req.tg.id });
     const r = await LuckyRound.findOne({ tgId: req.tg.id, status: 'active' });
-    res.json({ coins: u.coins, round: r ? luckyView(r) : null, tiers: LUCKY_TIERS, cards: LUCKY_CARDS });
+    res.json({ coins: u.coins, round: r ? luckyView(r) : null, tiers: CFG().games.lucky.tiers, cards: luckyCards(), rtp: settings.luckyRtp(CFG().games.lucky) });
   } catch (e) { fail(res, e); }
 });
 
-app.post('/api/lucky/play', auth, async (req, res) => {
+app.post('/api/lucky/play', auth, gameOn('lucky'), async (req, res) => {
   try {
     const uid = req.tg.id, bet = Number(req.body && req.body.bet);
-    if (!LUCKY_TIERS.includes(bet)) return res.status(400).json({ error: 'bad_request' });
+    if (!CFG().games.lucky.tiers.includes(bet)) return res.status(400).json({ error: 'bad_request' });
     await withLock('l' + uid, async () => {
       await upsertUser(req.tg);
       await luckyPayPending(uid);
@@ -858,12 +881,13 @@ app.post('/api/lucky/play', auth, async (req, res) => {
       if (open) return res.status(409).json({ error: 'round_active', round: luckyView(open) });
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
-      qualify(uid);
+      qualify(uid); tx(uid, 'lucky_bet', -bet, paid.coins, null, 'lucky'); stat('lucky', bet, 0);
       try {
         const r = await LuckyRound.create({ tgId: uid, bet, deck: luckyShuffle(LUCKY_DECK.slice()) });
         res.json({ coins: paid.coins, round: luckyView(r) });
       } catch (e) {
         await User.updateOne({ tgId: uid }, { $inc: { coins: bet } });   // never keep the bet if the round could not be created
+        tx(uid, 'refund', bet, null, null, 'lucky'); stat('lucky', -bet, 0);
         throw e;
       }
     });
@@ -909,8 +933,7 @@ app.get('/api/lucky/history', auth, async (req, res) => {
 //  The server draws 3 random stops, pays the win, and sends the stops back. The page only animates them.
 // =====================================================================
 const SlotMath = require('./slots_math');
-const SLOT_BET_PRESETS = [50, 100, 200, 500, 600];
-const SLOT_BET_MIN = 10, SLOT_BET_MAX = 5000;   // custom bets allowed in this range (whole numbers)
+// presets and the bet range come from the admin settings; the paytable is the built-in one scaled to the chosen edge (settings.slotPay)
 
 const slotSchema = new mongoose.Schema({
   tgId: { type: Number, required: true },
@@ -929,24 +952,26 @@ async function slotPay(spinId, uid, win) {   // safe to call again: credits exac
   if (!g.modifiedCount) return;
   try { await User.updateOne({ tgId: uid }, { $inc: { coins: win } }); }
   catch (e) { await SlotSpin.updateOne({ _id: spinId }, { $set: { unpaid: true } }); throw e; }
+  tx(uid, 'slots_win', win, null, spinId, 'slots'); stat('slots', 0, win);
 }
 async function slotPayPending(uid) {
   const rows = await SlotSpin.find({ tgId: uid, unpaid: true });
   for (const r of rows) await slotPay(r._id, uid, r.win);
 }
-const slotBetOk = (bet) => Number.isInteger(bet) && bet >= SLOT_BET_MIN && bet <= SLOT_BET_MAX;
+const slotBetOk = (bet) => Number.isInteger(bet) && bet >= CFG().games.slots.min && bet <= CFG().games.slots.max;
 
 app.get('/api/slots/state', auth, async (req, res) => {
   try {
     await upsertUser(req.tg);
     await slotPayPending(req.tg.id);
     const u = await User.findOne({ tgId: req.tg.id });
-    res.json({ coins: u.coins, presets: SLOT_BET_PRESETS, min: SLOT_BET_MIN, max: SLOT_BET_MAX,
-      strips: SlotMath.STRIPS, paytable: SlotMath.PAYTABLE });
+    const SG = CFG().games.slots;
+    res.json({ coins: u.coins, presets: SG.presets, min: SG.min, max: SG.max,
+      strips: SlotMath.STRIPS, paytable: settings.slotPay(SG) });
   } catch (e) { fail(res, e); }
 });
 
-app.post('/api/slots/spin', auth, async (req, res) => {
+app.post('/api/slots/spin', auth, gameOn('slots'), async (req, res) => {
   try {
     const uid = req.tg.id, bet = Number(req.body && req.body.bet);
     if (!slotBetOk(bet)) return res.status(400).json({ error: 'bad_request' });
@@ -955,13 +980,14 @@ app.post('/api/slots/spin', auth, async (req, res) => {
       await slotPayPending(uid);
       const paid = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: bet } }, { $inc: { coins: -bet } }, { new: true });
       if (!paid) return res.status(402).json({ error: 'not_enough_coins' });
-      qualify(uid);
+      qualify(uid); tx(uid, 'slots_bet', -bet, paid.coins, null, 'slots'); stat('slots', bet, 0);
       const stops = [0, 1, 2].map(() => crypto.randomInt(SlotMath.STRIP_LEN));
-      const { mult, sym } = SlotMath.evaluate(stops);
-      const win = bet * mult;
+      const sym = SlotMath.evaluate(stops).sym;
+      const mult = sym ? settings.slotPay(CFG().games.slots)[sym] : 0;       // multiplier in hundredths, so the win is exact
+      const win = Math.floor(bet * Math.round(mult * 100) / 100);
       let row;
       try { row = await SlotSpin.create({ tgId: uid, bet, stops, mult, win, unpaid: win > 0 }); }
-      catch (e) { await User.updateOne({ tgId: uid }, { $inc: { coins: bet } }); throw e; }   // never keep the bet if the spin could not be saved
+      catch (e) { await User.updateOne({ tgId: uid }, { $inc: { coins: bet } }); tx(uid, 'refund', bet, null, null, 'slots'); stat('slots', -bet, 0); throw e; }   // never keep the bet if the spin could not be saved
       if (win > 0) {
         try { await slotPay(row._id, uid, win); }
         catch (e) { console.error('slot payout pending, will retry', e); }
@@ -980,7 +1006,7 @@ app.post('/api/slots/spin', auth, async (req, res) => {
 app.get('/api/daily/state', auth, async (req, res) => {
   try {
     const u = await upsertUser(req.tg);
-    res.json({ coins: u.coins, amount: DAILY_BONUS, available: u.lastDaily !== dayKey(), nextAt: nextDayAt() });
+    res.json({ coins: u.coins, amount: CFG().limits.dailyBonus, available: u.lastDaily !== dayKey(), nextAt: nextDayAt() });
   } catch (e) { fail(res, e); }
 });
 app.post('/api/daily/claim', auth, async (req, res) => {
@@ -988,19 +1014,21 @@ app.post('/api/daily/claim', auth, async (req, res) => {
     const uid = req.tg.id;
     await upsertUser(req.tg);
     // one atomic update: it only matches while today's bonus has not been taken, so two taps can never pay twice
-    const u = await User.findOneAndUpdate({ tgId: uid, lastDaily: { $ne: dayKey() } }, { $set: { lastDaily: dayKey() }, $inc: { coins: DAILY_BONUS } }, { new: true });
+    const u = await User.findOneAndUpdate({ tgId: uid, lastDaily: { $ne: dayKey() } }, { $set: { lastDaily: dayKey() }, $inc: { coins: CFG().limits.dailyBonus } }, { new: true });
     if (!u) { const cur = await User.findOne({ tgId: uid }); return res.status(409).json({ error: 'already_claimed', coins: cur ? cur.coins : 0, nextAt: nextDayAt() }); }
-    res.json({ amount: DAILY_BONUS, coins: u.coins, nextAt: nextDayAt() });
+    tx(uid, 'daily', CFG().limits.dailyBonus, u.coins);
+    res.json({ amount: CFG().limits.dailyBonus, coins: u.coins, nextAt: nextDayAt() });
   } catch (e) { fail(res, e); }
 });
 
 // =====================================================================
 //  SPIN WHEEL. The server picks the prize (the page only animates it).
-//  1 free spin a day, then SPIN_COST coins. "free" prize = one more free spin.
+//  1 free spin a day, then CFG().games.spin.cost coins. "free" prize = one more free spin.
 //  Wheel order = clockwise from the top. Chances are per mille and do NOT depend on the wedge size.
 // =====================================================================
 const SPIN_WEDGES = [{ k: 'coins', v: 100 }, { k: 'try' }, { k: 'coins', v: 200 }, { k: 'free' }, { k: 'coins', v: 300 }, { k: 'try' }, { k: 'coins', v: 250 }, { k: 'coins', v: 500 }];
-const SPIN_ODDS = [{ k: 'try', w: 500 }, { k: 'free', w: 100 }, { k: 'coins', v: 100, w: 180 }, { k: 'coins', v: 200, w: 100 }, { k: 'coins', v: 250, w: 50 }, { k: 'coins', v: 300, w: 45 }, { k: 'coins', v: 500, w: 25 }];   // sums to 1000
+// odds (per mille) come from settings.spinOdds(): the wedge values are printed on the wheel, so the admin's edge changes the chances
+const SPIN_ODDS_NOW = () => settings.spinOdds(CFG().games.spin);
 // expected return per paid spin = (0.18*100 + 0.10*200 + 0.05*250 + 0.045*300 + 0.025*500) / (1 - 0.10 free) = 85 coins for a 100-coin spin
 const spinSchema = new mongoose.Schema({
   tgId: { type: Number, required: true }, source: String, kind: String, amount: { type: Number, default: 0 }, wedge: Number,
@@ -1014,12 +1042,13 @@ async function spinPay(rowId, uid, kind, amount) {   // credits exactly once, sa
   const inc = kind === 'free' ? { freeSpins: 1 } : { coins: amount };
   try { await User.updateOne({ tgId: uid }, { $inc: inc }); }
   catch (e) { await SpinLog.updateOne({ _id: rowId }, { $set: { unpaid: true } }); throw e; }
+  if (kind !== 'free') { tx(uid, 'spin_win', amount, null, rowId, 'spin'); stat('spin', 0, amount); }
 }
 async function spinPayPending(uid) {
   const rows = await SpinLog.find({ tgId: uid, unpaid: true });
   for (const r of rows) await spinPay(r._id, uid, r.kind, r.amount);
 }
-const spinView = (u) => ({ coins: u.coins, freeSpins: u.freeSpins || 0, freeAvailable: u.lastFreeSpin !== dayKey(), nextFreeAt: nextDayAt(), cost: SPIN_COST });
+const spinView = (u) => ({ coins: u.coins, freeSpins: u.freeSpins || 0, freeAvailable: u.lastFreeSpin !== dayKey(), nextFreeAt: nextDayAt(), cost: CFG().games.spin.cost });
 app.get('/api/spin/state', auth, async (req, res) => {
   try {
     await upsertUser(req.tg); await spinPayPending(req.tg.id);
@@ -1027,7 +1056,7 @@ app.get('/api/spin/state', auth, async (req, res) => {
     res.json({ ...spinView(u), wedges: SPIN_WEDGES });
   } catch (e) { fail(res, e); }
 });
-app.post('/api/spin/play', auth, async (req, res) => {
+app.post('/api/spin/play', auth, gameOn('spin'), async (req, res) => {
   try {
     const uid = req.tg.id;
     await withLock('p' + uid, async () => {
@@ -1040,15 +1069,17 @@ app.post('/api/spin/play', auth, async (req, res) => {
       }
       if (!u) {
         source = 'paid';
-        u = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: SPIN_COST } }, { $inc: { coins: -SPIN_COST } }, { new: true });           // 3) pay
+        u = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: CFG().games.spin.cost } }, { $inc: { coins: -CFG().games.spin.cost } }, { new: true });           // 3) pay
         if (!u) return res.status(402).json({ error: 'not_enough_coins' });
+        tx(uid, 'spin_cost', -CFG().games.spin.cost, u.coins, null, 'spin'); stat('spin', CFG().games.spin.cost, 0);
       }
-      const undo = () => (source === 'paid' ? User.updateOne({ tgId: uid }, { $inc: { coins: SPIN_COST } })
+      const undo = () => (source === 'paid' ? (tx(uid, 'refund', CFG().games.spin.cost, null, null, 'spin'), stat('spin', -CFG().games.spin.cost, 0), User.updateOne({ tgId: uid }, { $inc: { coins: CFG().games.spin.cost } }))
         : source === 'daily' ? User.updateOne({ tgId: uid }, { $set: { lastFreeSpin: '' } }) : User.updateOne({ tgId: uid }, { $inc: { freeSpins: 1 } }));
       let row, prize;
       try {
-        let r = crypto.randomInt(1000); prize = SPIN_ODDS[SPIN_ODDS.length - 1];
-        for (const o of SPIN_ODDS) { if (r < o.w) { prize = o; break; } r -= o.w; }
+        const ODDS = SPIN_ODDS_NOW();
+        let r = crypto.randomInt(1000); prize = ODDS[ODDS.length - 1];
+        for (const o of ODDS) { if (r < o.w) { prize = o; break; } r -= o.w; }
         const slots = SPIN_WEDGES.map((w, i) => i).filter((i) => SPIN_WEDGES[i].k === prize.k && (prize.k !== 'coins' || SPIN_WEDGES[i].v === prize.v));
         const wedge = slots[crypto.randomInt(slots.length)];
         const amount = prize.k === 'coins' ? prize.v : 0;
@@ -1064,7 +1095,7 @@ app.post('/api/spin/play', auth, async (req, res) => {
 // =====================================================================
 //  INVITES. Link = https://t.me/<bot>?start=inv_<your id>.
 //  pending   = the friend opened the bot through your link
-//  completed = the friend has added INVITE_MIN_DEPOSIT coins through approved top-ups (see depositMilestone())  -> you can claim INVITE_REWARD once
+//  completed = the friend has added CFG().limits.inviteMinDeposit coins through approved top-ups (see depositMilestone())  -> you can claim CFG().limits.inviteReward once
 // =====================================================================
 app.get('/api/invites/state', auth, async (req, res) => {
   try {
@@ -1073,7 +1104,7 @@ app.get('/api/invites/state', auth, async (req, res) => {
     const kids = await User.find({ invitedBy: uid }).sort({ createdAt: -1 }).limit(200).select('tgId name createdAt qualifiedAt inviteClaimed depositTotal').lean();
     const pending = kids.filter((k) => !k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, at: new Date(k.createdAt).getTime(), deposited: k.depositTotal || 0 }));
     const completed = kids.filter((k) => k.qualifiedAt).map((k) => ({ id: String(k.tgId), name: k.name, claimed: !!k.inviteClaimed, at: new Date(k.qualifiedAt).getTime() }));
-    res.json({ coins: me.coins, reward: INVITE_REWARD, minDeposit: INVITE_MIN_DEPOSIT, link: BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=inv_${uid}` : null, pending, completed });
+    res.json({ coins: me.coins, reward: CFG().limits.inviteReward, minDeposit: CFG().limits.inviteMinDeposit, link: BOT_USERNAME ? `https://t.me/${BOT_USERNAME}?start=inv_${uid}` : null, pending, completed });
   } catch (e) { fail(res, e); }
 });
 app.post('/api/invites/claim', auth, async (req, res) => {
@@ -1085,9 +1116,10 @@ app.post('/api/invites/claim', auth, async (req, res) => {
       const g = await User.findOneAndUpdate({ tgId: kid, invitedBy: uid, qualifiedAt: { $ne: null }, inviteClaimed: { $ne: true } }, { $set: { inviteClaimed: true } });
       if (!g) return res.status(409).json({ error: 'nothing_to_claim' });
       let me;
-      try { me = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: INVITE_REWARD } }, { new: true }); if (!me) throw new Error('no user'); }
+      try { me = await User.findOneAndUpdate({ tgId: uid }, { $inc: { coins: CFG().limits.inviteReward } }, { new: true }); if (!me) throw new Error('no user'); }
       catch (e) { await User.updateOne({ tgId: kid }, { $set: { inviteClaimed: false } }); throw e; }
-      res.json({ amount: INVITE_REWARD, coins: me.coins });
+      tx(uid, 'invite', CFG().limits.inviteReward, me.coins, kid);
+      res.json({ amount: CFG().limits.inviteReward, coins: me.coins });
     });
   } catch (e) { fail(res, e); }
 });
@@ -1133,17 +1165,17 @@ app.get('/api/profile', auth, async (req, res) => {
 // =====================================================================
 //  HEARTS SHOP: hearts are bought with coins. One atomic update (coins -price, hearts +n), so it can never half-happen or be tapped twice.
 // =====================================================================
-const HEART_PACKS = [{ n: 1, price: 700 }, { n: 2, price: 1400 }, { n: 3, price: 2000 }, { n: 5, price: 3400 }, { n: 10, price: 6000 }];
 app.get('/api/hearts/state', auth, async (req, res) => {
-  try { const u = await upsertUser(req.tg); res.json({ coins: u.coins, hearts: u.hearts, packs: HEART_PACKS }); } catch (e) { fail(res, e); }
+  try { const u = await upsertUser(req.tg); res.json({ coins: u.coins, hearts: u.hearts, packs: CFG().games.hearts.packs }); } catch (e) { fail(res, e); }
 });
-app.post('/api/hearts/buy', auth, async (req, res) => {
+app.post('/api/hearts/buy', auth, gameOn('hearts'), async (req, res) => {
   try {
-    const pack = HEART_PACKS.find((p) => p.n === Number(req.body && req.body.n));
+    const pack = CFG().games.hearts.packs.find((p) => p.n === Number(req.body && req.body.n));
     if (!pack) return res.status(400).json({ error: 'bad_pack' });
     await upsertUser(req.tg);
     const u = await User.findOneAndUpdate({ tgId: req.tg.id, coins: { $gte: pack.price } }, { $inc: { coins: -pack.price, hearts: pack.n } }, { new: true });
     if (!u) return res.status(402).json({ error: 'not_enough_coins' });
+    tx(req.tg.id, 'hearts', -pack.price, u.coins, null, '', pack.n + ' hearts');
     res.json({ bought: pack.n, price: pack.price, coins: u.coins, hearts: u.hearts });
   } catch (e) { fail(res, e); }
 });
@@ -1153,7 +1185,6 @@ app.post('/api/hearts/buy', auth, async (req, res) => {
 //  WITHDRAW. The coins are taken from the balance when the request is sent (so they cannot be spent twice).
 //  The admin of that platform (KPAY = admin 1, WAVE PAY = admin 2) gets a message with: Paid / Reject (rejecting gives the coins back).
 // =====================================================================
-const WITHDRAW_MIN = Number(process.env.WITHDRAW_MIN || 5000), MAX_PENDING_WD = 2;
 const wdSchema = new mongoose.Schema({
   tgId: { type: Number, required: true }, admin: Number, platform: String, accountName: String, phone: String, coins: Number,
   status: { type: String, default: 'pending' },          // pending | paid | rejected | failed
@@ -1165,7 +1196,7 @@ const wdView = (w) => ({ id: String(w._id), platform: w.platform, coins: w.coins
 app.get('/api/withdraw/config', auth, async (req, res) => {
   try {
     const u = await upsertUser(req.tg);
-    res.json({ min: WITHDRAW_MIN, coins: u.coins, platforms: [1, 2].map((n) => ({ key: String(n), label: ADMINS[n].pay.label, available: !!ADMINS[n].id })) });
+    res.json({ min: CFG().limits.withdrawMin, coins: u.coins, platforms: [1, 2].map((n) => ({ key: String(n), label: ADMINS[n].pay.label, available: !!ADMINS[n].id })) });
   } catch (e) { fail(res, e); }
 });
 app.get('/api/withdraw/mine', auth, async (req, res) => {
@@ -1178,14 +1209,15 @@ app.post('/api/withdraw/submit', auth, async (req, res) => {
     const adm = ADMINS[Number(b.admin)];
     if (!adm || !adm.id) return res.status(503).json({ error: 'admin_unavailable' });
     const coins = Number(b.coins), name = clean(b.name, 64), phone = String(b.phone || '').replace(/[\s-]/g, '');
-    if (!Number.isSafeInteger(coins) || coins < WITHDRAW_MIN) return res.status(400).json({ error: 'below_minimum' });
+    if (!Number.isSafeInteger(coins) || coins < CFG().limits.withdrawMin) return res.status(400).json({ error: 'below_minimum' });
     if (!name) return res.status(400).json({ error: 'bad_name' });
     if (!/^\+?\d{8,15}$/.test(phone)) return res.status(400).json({ error: 'bad_phone' });
     await withLock('wd' + uid, async () => {
       const me = await upsertUser(req.tg);
-      if (await Withdrawal.countDocuments({ tgId: uid, status: 'pending' }) >= MAX_PENDING_WD) return res.status(429).json({ error: 'too_many_pending' });
+      if (await Withdrawal.countDocuments({ tgId: uid, status: 'pending' }) >= CFG().limits.maxPendingWithdrawals) return res.status(429).json({ error: 'too_many_pending' });
       const held = await User.findOneAndUpdate({ tgId: uid, coins: { $gte: coins } }, { $inc: { coins: -coins } }, { new: true });   // take the coins first
       if (!held) return res.status(402).json({ error: 'not_enough_coins' });
+      tx(uid, 'withdraw_hold', -coins, held.coins);
       let w;
       try {
         w = await Withdrawal.create({ tgId: uid, admin: Number(adm.key), platform: adm.pay.label, accountName: name, phone, coins });
@@ -1196,6 +1228,7 @@ app.post('/api/withdraw/submit', auth, async (req, res) => {
         console.error('withdraw: admin not reachable:', e && e.message);
         if (w) await Withdrawal.updateOne({ _id: w._id }, { $set: { status: 'failed' } }).catch(() => {});
         await User.updateOne({ tgId: uid }, { $inc: { coins } });          // give the coins back
+        tx(uid, 'withdraw_refund', coins);
         return res.status(e && e.message === 'timeout' ? 504 : 502).json({ error: 'admin_unreachable' });
       }
       res.json({ ok: true, id: String(w._id), coins: held.coins });
@@ -1208,8 +1241,18 @@ async function settleWithdrawal(id, status) {                                // 
   if (status === 'rejected') {
     try { await User.updateOne({ tgId: w.tgId }, { $inc: { coins: w.coins } }); }
     catch (e) { await Withdrawal.updateOne({ _id: w._id }, { $set: { status: 'pending' } }); throw e; }
+    tx(w.tgId, 'withdraw_refund', w.coins, null, w._id);
   }
   return w;
+}
+async function afterWithdrawal(done, act) {   // update the admin message and tell the player (used by the Telegram buttons and the admin panel)
+  const line = act === 'paid' ? `✅ <b>Paid</b>: ${done.coins} coins` : `❌ <b>Rejected</b>: ${done.coins} coins returned to the player`;
+  try {
+    await bot.telegram.editMessageReplyMarkup(done.adminChat, done.adminMsg, undefined, { inline_keyboard: [] });
+    await bot.telegram.editMessageText(done.adminChat, done.adminMsg, undefined, `${line}\nPlayer ID: <code>${done.tgId}</code>\nPlatform: ${escHtml(done.platform)}\nAccount: ${escHtml(done.accountName)} / ${escHtml(done.phone)}`, { parse_mode: 'HTML' });
+  } catch (e) { /* message too old */ }
+  if (act === 'paid') notify(done.tgId, `✅ Your withdrawal of ${done.coins} coins has been paid to your ${done.platform} account.\nသင့် ${done.platform} အကောင့်သို့ coins ${done.coins} ငွေထုတ်ပေးပြီးပါပြီ။`);
+  else notify(done.tgId, `❌ Your withdrawal was rejected and ${done.coins} coins were returned to your balance.\nသင့်ငွေထုတ်တောင်းဆိုမှုကို ပယ်ချပြီး coins ${done.coins} ကို ပြန်လည်ထည့်ပေးလိုက်ပါပြီ။`);
 }
 bot.action(/^wd:(paid|no):([a-f0-9]{24})$/, async (ctx) => {
   try {
@@ -1220,14 +1263,19 @@ bot.action(/^wd:(paid|no):([a-f0-9]{24})$/, async (ctx) => {
     const done = await settleWithdrawal(id, act === 'paid' ? 'paid' : 'rejected');
     if (!done) return ctx.answerCbQuery('Already handled');
     await ctx.answerCbQuery(act === 'paid' ? 'Marked as paid' : 'Rejected, coins returned');
-    const line = act === 'paid' ? `✅ <b>Paid</b>: ${done.coins} coins` : `❌ <b>Rejected</b>: ${done.coins} coins returned to the player`;
-    try {
-      await bot.telegram.editMessageReplyMarkup(done.adminChat, done.adminMsg, undefined, { inline_keyboard: [] });
-      await bot.telegram.editMessageText(done.adminChat, done.adminMsg, undefined, `${line}\nPlayer ID: <code>${done.tgId}</code>\nPlatform: ${escHtml(done.platform)}\nAccount: ${escHtml(done.accountName)} / ${escHtml(done.phone)}`, { parse_mode: 'HTML' });
-    } catch (e) { /* message too old */ }
-    if (act === 'paid') notify(done.tgId, `✅ Your withdrawal of ${done.coins} coins has been paid to your ${done.platform} account.\nသင့် ${done.platform} အကောင့်သို့ coins ${done.coins} ငွေထုတ်ပေးပြီးပါပြီ။`);
-    else notify(done.tgId, `❌ Your withdrawal was rejected and ${done.coins} coins were returned to your balance.\nသင့်ငွေထုတ်တောင်းဆိုမှုကို ပယ်ချပြီး coins ${done.coins} ကို ပြန်လည်ထည့်ပေးလိုက်ပါပြီ။`);
+    await afterWithdrawal(done, act === 'paid' ? 'paid' : 'no');
   } catch (e) { console.error('withdraw action failed', e); ctx.answerCbQuery('Error').catch(() => {}); }
+});
+
+// =====================================================================
+//  AVATAR: the player's own Telegram picture, shrunk to a tiny webp (see store.js). 204 = no picture, the page keeps its default.
+// =====================================================================
+app.get('/api/avatar', auth, async (req, res) => {
+  try {
+    const a = await store.avatarFor(bot, req.tg);
+    if (!a) return res.sendStatus(204);
+    res.set({ 'Content-Type': a.mime, 'Cache-Control': 'private, max-age=3600' }).send(a.data);
+  } catch (e) { console.error('avatar failed', e && e.message); res.sendStatus(204); }
 });
 
 // Express error handler (bad JSON etc.) so nothing leaks a stack trace or hangs
@@ -1239,7 +1287,13 @@ app.use((err, req, res, next) => { // eslint-disable-line no-unused-vars
 process.on('unhandledRejection', (e) => console.error('unhandledRejection', e));
 
 async function main() {
-  await mongoose.connect(MONGODB_URI);
+  await db.connectAll();
+  await settings.load(mongoose);
+  db.setFullPct(CFG().storage.fullPct);
+  (await User.find({ banned: true }).select('tgId').lean()).forEach((u) => banned.add(u.tgId));
+  await db.stats(true).catch(() => {});
+  require('./admin').mount({ app, bot, express, auth: { verifyInitData, isAdmin, banned, adminIds: () => [...ADMIN_IDS] }, models: { User, Match, Deposit, Withdrawal, BombRound, LuckyRound, SlotSpin }, settings, store, db,
+    helpers: { settleDeposit, afterDecision, settleWithdrawal, afterWithdrawal, notify, escHtml, dayKey, withLock, fail } });
   User.collection.createIndex({ nameLen: 1, coins: -1 }).catch((e) => console.error('index', e));
   User.collection.createIndex({ invitedBy: 1, createdAt: -1 }, { sparse: true }).catch((e) => console.error('index', e));
   bot.telegram.getMe().then((me) => { if (!BOT_USERNAME) BOT_USERNAME = me.username || ''; }).catch((e) => console.error('getMe failed', e));
@@ -1254,4 +1308,4 @@ async function main() {
 }
 if (require.main === module) main().catch((e) => { console.error(e); process.exit(1); });
 
-module.exports = { BombRound, BOMB_LADDER, bombPrize, bombMult, app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
+module.exports = { BombRound, bombPrize, bombMult, app, User, Match, slotInfo, pruneHistory, completeMatch, verifyInitData, WAIT_MAX, HISTORY_MAX };
