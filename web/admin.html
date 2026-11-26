@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Play2Win Admin</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
+<style>
+:root{--bg:#14123a;--card:#1f1c52;--card2:#292566;--line:#3a3589;--tx:#f2f0ff;--mut:#a9a4e0;--ok:#35d07f;--bad:#ff5d73;--warn:#ffc233;--acc:#7c6cff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.4 system-ui,sans-serif;padding-bottom:60px}
+#tabs{position:sticky;top:0;z-index:5;display:flex;gap:6px;overflow-x:auto;padding:8px;background:#0e0c2b;border-bottom:1px solid var(--line)}
+#tabs button{flex:none;border:0;border-radius:18px;padding:8px 14px;background:var(--card);color:var(--mut);font:600 13px system-ui}
+#tabs button.on{background:var(--acc);color:#fff}
+main{padding:10px;max-width:760px;margin:auto}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin:0 0 10px}
+h2{margin:0 0 8px;font-size:16px}h3{margin:12px 0 6px;font-size:14px;color:var(--mut)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.k{background:var(--card2);border-radius:10px;padding:8px 10px}.k b{display:block;font-size:18px}.k span{color:var(--mut);font-size:12px}
+label{display:block;font-size:12px;color:var(--mut);margin:8px 0 3px}
+input,select,textarea{width:100%;background:#12103a;border:1px solid var(--line);border-radius:9px;color:var(--tx);padding:9px;font:inherit}
+textarea{min-height:90px}
+button.b{border:0;border-radius:10px;padding:9px 14px;font:700 13px system-ui;color:#fff;background:var(--acc)}
+button.b.g{background:var(--ok);color:#06210f}button.b.r{background:var(--bad)}button.b.y{background:var(--warn);color:#2a1d00}button.b.s{background:var(--card2);color:var(--tx)}
+button:disabled{opacity:.5}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row>*{flex:1}.row>button{flex:none}
+.item{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid var(--line);cursor:default}.item:last-child{border:0}
+.item small,.mut{color:var(--mut)}.pos{color:var(--ok)}.neg{color:var(--bad)}.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;font-weight:700;background:var(--card2)}
+.tag.ok{background:#15572f;color:#9bf2c0}.tag.bad{background:#6a1d2a;color:#ffb3c0}.tag.warn{background:#6a5210;color:#ffe08a}
+table{width:100%;border-collapse:collapse;font-size:12.5px}th,td{padding:5px 4px;text-align:right;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}th{color:var(--mut);font-weight:600}
+.bar{height:10px;background:#12103a;border-radius:6px;overflow:hidden;margin:4px 0}.bar i{display:block;height:100%;background:var(--ok)}
+.sw{display:flex;align-items:center;gap:8px}.sw input{width:auto}
+#modal{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;z-index:20;overflow:auto}#modal .box{background:var(--bg);margin:20px auto;max-width:720px;padding:12px;border-radius:14px;border:1px solid var(--line)}
+#toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);background:#000c;padding:10px 16px;border-radius:12px;display:none;z-index:30}
+.note{font-size:12px;color:var(--mut);margin:6px 0}.warnbox{background:#4a3a08;border:1px solid #8a6c10;border-radius:10px;padding:8px;font-size:12.5px;margin:8px 0}
+</style></head><body>
+<div id="tabs"></div><main id="main">Loading…</main>
+<div id="modal"><div class="box" id="box"></div></div><div id="toast"></div>
+<script>
+const tg = window.Telegram && Telegram.WebApp;
+if (!(tg && tg.initData && tg.platform !== 'unknown')) { document.body.innerHTML = '<div style="padding:40px;text-align:center;font:600 18px sans-serif;color:#fff">Error: open the admin panel from the bot with /adminlogin (inside Telegram).</div>'; throw new Error('telegram_only'); }
+tg.ready(); tg.expand();
+const API = (window.P2W_API || '').replace(/\/$/, '');
+const $ = (id) => document.getElementById(id);
+const esc = (v) => String(v == null ? '' : v).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const n = (v) => Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const pct = (v) => (v == null || !isFinite(v) ? '-' : (v * 100).toFixed(1) + '%');
+const ago = (t) => { if (!t) return '-'; const s = (Date.now() - new Date(t)) / 1000; return s < 90 ? 'now' : s < 5400 ? Math.round(s / 60) + 'm' : s < 129600 ? Math.round(s / 3600) + 'h' : Math.round(s / 86400) + 'd'; };
+const sg = (v) => `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${v > 0 ? '+' : ''}${n(v)}</span>`;
+function toast(m, bad) { const t = $('toast'); t.textContent = m; t.style.background = bad ? '#8a1c2c' : '#000c'; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 2600); }
+async function call(path, body) {
+  const r = await fetch(API + '/api/admin' + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', 'x-init-data': tg.initData }, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(j.error || 'error'); e.status = r.status; throw e; }
+  return j;
+}
+const guard = (fn) => async (...a) => { try { return await fn(...a); } catch (e) { toast(e.status === 403 ? 'Not an admin' : e.status === 401 ? 'Login expired: reopen with /adminlogin' : 'Error: ' + e.message, true); } };
+const GAMES = { duel: 'Fly & Dodge (duel)', bomb: 'Bomb Points', lucky: 'Lucky Cards', slots: 'Slot Machine', spin: 'Spin Wheel' };
+const TX = { duel_fee: 'Duel entry', duel_prize: 'Duel prize', bomb_bet: 'Bomb bet', bomb_win: 'Bomb cash-out', lucky_bet: 'Lucky bet', lucky_win: 'Lucky win', slots_bet: 'Slots bet', slots_win: 'Slots win', spin_cost: 'Spin cost', spin_win: 'Spin win', daily: 'Daily bonus', invite: 'Invite reward', hearts: 'Hearts bought', deposit: 'Deposit', withdraw_hold: 'Withdraw (held)', withdraw_refund: 'Withdraw refund', refund: 'Refund', admin: 'Admin change' };
+
+const TABS = [['dash', 'Dashboard'], ['games', 'Games'], ['users', 'Users'], ['dep', 'Deposits'], ['wd', 'Withdrawals'], ['risk', 'Risk'], ['bc', 'Broadcast'], ['db', 'Database'], ['audit', 'Audit']];
+let tab = 'dash', O = null;
+$('tabs').innerHTML = TABS.map(([k, l]) => `<button data-k="${k}">${l}</button>`).join('');
+$('tabs').onclick = (e) => { const b = e.target.closest('button'); if (b) go(b.dataset.k); };
+function go(k) { tab = k; document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.k === k)); window.scrollTo(0, 0); VIEWS[k](); }
+const main = (h) => { $('main').innerHTML = h; };
+const modal = (h) => { $('box').innerHTML = h || ''; $('modal').style.display = h ? 'block' : 'none'; };
+$('modal').onclick = (e) => { if (e.target === $('modal')) modal(); };
+
+/* ---------------- dashboard + house pool ---------------- */
+const VIEWS = {};
+VIEWS.dash = guard(async () => {
+  main('Loading…'); O = await call('/overview'); const S = O.settings;
+  const house = (p) => { const rows = Object.keys(GAMES).map((g) => { const x = O.games[g][p], net = x.wagered - x.paid, edge = x.wagered > 0 ? net / x.wagered : null; return `<tr><td>${GAMES[g]}</td><td>${n(x.plays)}</td><td>${n(x.wagered)}</td><td>${n(x.paid)}</td><td>${sg(net)}</td><td>${pct(edge)}<br><small class="mut">goal ${S.games[g].edge}%</small></td></tr>`; });
+    const tot = Object.keys(GAMES).reduce((a, g) => { a.w += O.games[g][p].wagered; a.p += O.games[g][p].paid; return a; }, { w: 0, p: 0 });
+    return `<table><tr><th>Game</th><th>Plays</th><th>Bets</th><th>Paid out</th><th>House</th><th>Edge</th></tr>${rows.join('')}<tr><td><b>Total</b></td><td></td><td><b>${n(tot.w)}</b></td><td><b>${n(tot.p)}</b></td><td><b>${sg(tot.w - tot.p)}</b></td><td><b>${pct(tot.w ? (tot.w - tot.p) / tot.w : null)}</b></td></tr></table>`; };
+  main(`<div class="card"><h2>Players</h2><div class="grid3">
+   <div class="k"><b>${n(O.users)}</b><span>Total</span></div><div class="k"><b>${n(O.newToday)}</b><span>New today</span></div><div class="k"><b>${n(O.active24h)}</b><span>Active 24h</span></div>
+   <div class="k"><b>${n(O.coinsInCirculation)}</b><span>Coins held by players</span></div><div class="k"><b>${n(O.heartsInCirculation)}</b><span>Hearts</span></div><div class="k"><b>${n(O.banned)}</b><span>Banned</span></div></div></div>
+  <div class="card"><h2>Cash</h2><div class="grid">
+   <div class="k"><b>${n(O.deposits.today)}</b><span>Deposits today (${O.deposits.todayN})</span></div><div class="k"><b>${n(O.deposits.all)}</b><span>Deposits total (${O.deposits.allN})</span></div>
+   <div class="k"><b>${n(O.withdrawals.today)}</b><span>Withdrawn today (${O.withdrawals.todayN})</span></div><div class="k"><b>${n(O.withdrawals.all)}</b><span>Withdrawn total (${O.withdrawals.allN})</span></div>
+   <div class="k"><b>${sg(O.deposits.all - O.withdrawals.all)}</b><span>Deposits - withdrawals</span></div><div class="k"><b>${n(O.pendingDeposits)} / ${n(O.pendingWithdrawals)}</b><span>Pending deposits / withdrawals</span></div></div></div>
+  <div class="card"><h2>House pool: today</h2>${house('today')}</div>
+  <div class="card"><h2>House pool: last 7 days</h2>${house('d7')}</div>
+  <div class="card"><h2>House pool: last 30 days</h2>${house('d30')}
+   <p class="note"><b>How the home edge works:</b> every bet of every player goes into one pool. The house keeps the edge % of ALL bets and the rest is paid back to winners. Example: 10 players bet 2,000 each = 20,000 in the pool; at 25% edge the house keeps 5,000 and 15,000 goes back to whoever wins. The games are random, so one day can differ from the goal; with more plays the "Edge" column moves toward the goal.</p>
+   <p class="note">"Paid out" counts prizes already credited. Duel prizes appear when the winner claims them (after 10 minutes), Spin pays its free daily spins too.</p></div>
+  <div class="card"><h2>Databases</h2>${dbBars(O.db)}</div>${S.maintenance.on ? '<div class="warnbox">⚠ Maintenance mode is ON: players cannot play.</div>' : ''}
+  ${O.sharp ? '' : '<div class="warnbox">Avatars are OFF: the server has no "sharp" package. Redeploy so npm installs it.</div>'}`);
+});
+const dbBars = (rows) => rows.map((d) => `<div><b>${esc(d.role)}</b> <small class="mut">${esc(d.db)} ${d.shared.length > 1 ? '(also ' + d.shared.filter((x) => x !== d.role).join(', ') + ')' : ''}</small> ${d.ok ? `<span class="${d.pct > 85 ? 'neg' : ''}">${d.usedMB} / ${d.quotaMB} MB (${d.pct}%)</span>` : '<span class="neg">offline: ' + esc(d.error) + '</span>'}<div class="bar"><i style="width:${Math.min(100, d.pct)}%;background:${d.pct > 85 ? 'var(--bad)' : d.pct > 65 ? 'var(--warn)' : 'var(--ok)'}"></i></div></div>`).join('');
+
+/* ---------------- games ---------------- */
+const field = (id, label, val, ph) => `<div><label>${label}</label><input id="${id}" value="${esc(val)}" ${ph ? `placeholder="${esc(ph)}"` : ''}></div>`;
+const toggle = (id, label, on) => `<label class="sw"><input type="checkbox" id="${id}" ${on ? 'checked' : ''}> ${label}</label>`;
+const arr = (id) => $(id).value.split(/[,\s]+/).filter(Boolean).map(Number);
+VIEWS.games = guard(async () => {
+  main('Loading…'); const r = await call('/settings'), S = r.settings, D = r.derived, G = S.games, L = S.limits, ST = S.storage;
+  const head = (g, extra) => `<div class="card"><h2>${GAMES[g] || g}</h2>${toggle(g + '_on', 'Game is ON', G[g].on)}${extra}`;
+  const foot = (g) => `<div class="row" style="margin-top:10px"><button class="b g" onclick="saveGame('${g}')">Save ${GAMES[g] || g}</button></div></div>`;
+  main(`<div class="card"><h2>Maintenance</h2>${toggle('mt_on', 'Maintenance mode (nobody can play)', S.maintenance.on)}${field('mt_msg', 'Message shown to players', S.maintenance.msg)}<div class="row" style="margin-top:10px"><button class="b y" onclick="saveMaint()">Save</button></div></div>
+  <div class="warnbox">Changes apply immediately to new bets. Rounds already in progress finish with the numbers they started with (bomb and card rounds use the new multipliers when they end).</div>
+  ${head('duel', `<div class="grid">${field('duel_fee', 'Entry fee (coins)', G.duel.fee)}${field('duel_edge', 'Home edge %', G.duel.edge)}</div><p class="note">Winner prize = 2 x fee x (1 - edge) = <b>${n(D.duel.prize)}</b>. House keeps <b>${n(D.duel.houseTakes)}</b> per decided match. A draw returns the fee.</p>`)}${foot('duel')}
+  ${head('bomb', `<div class="grid">${field('bomb_edge', 'Home edge %', G.bomb.edge)}${field('bomb_maxMult', 'Max multiplier (auto cash-out)', G.bomb.maxMult)}${field('bomb_minBombs', 'Min bombs', G.bomb.minBombs)}${field('bomb_maxBombs', 'Max bombs (up to 15)', G.bomb.maxBombs)}</div>${field('bomb_entries', 'Entry amounts (exactly 4, comma separated)', G.bomb.entries.join(', '))}
+   <p class="note">Each multiplier = (1 - edge) / real chance of surviving that many safe tiles, so cashing out at ANY step returns ${pct(D.bomb.rtp)} on average. With ${G.bomb.minBombs} bombs the steps pay: ${esc((D.bomb.sample3 || []).join('x, '))}x. The cap lowers the return only on the deepest steps.</p>`)}${foot('bomb')}
+  ${head('lucky', `<div class="grid">${field('lucky_edge', 'Home edge % (1-50)', G.lucky.edge)}</div>${field('lucky_tiers', 'Bet amounts (exactly 5)', G.lucky.tiers.join(', '))}
+   <p class="note">Deck: skull, skull, bronze ${D.lucky.cards.bronze}%, silver ${D.lucky.cards.silver}%, gold <b>${D.lucky.cards.gold}%</b>. Real return ${pct(D.lucky.rtp)}. The gold card moves with the edge.</p>`)}${foot('lucky')}
+  ${head('slots', `<div class="grid">${field('slots_edge', 'Home edge %', G.slots.edge)}${field('slots_min', 'Min bet', G.slots.min)}${field('slots_max', 'Max bet', G.slots.max)}</div>${field('slots_presets', 'Quick bets (exactly 5)', G.slots.presets.join(', '))}
+   <p class="note">The built-in paytable returns ${pct(D.slots.baseRtp)}. Your edge scales every prize so the real return is <b>${pct(D.slots.rtp)}</b>. Paytable now: ${Object.entries(D.slots.paytable).map(([k, v]) => k + ' x' + v).join(', ')}.</p>`)}${foot('slots')}
+  ${head('spin', `<div class="grid">${field('spin_edge', 'Home edge % (paid spins)', G.spin.edge)}${field('spin_cost', 'Cost per extra spin', G.spin.cost)}</div>
+   <p class="note">The prize values are printed on the wheel, so the edge changes the CHANCES. Real return ${pct(D.spin.rtp)}. Chances (per 1000): ${D.spin.odds.map((o) => (o.k === 'coins' ? o.v : o.k) + ': ' + o.w).join(' · ')}. Everyone also gets 1 free spin a day.</p>`)}${foot('spin')}
+  ${head('hearts', field('hearts_prices', 'Prices for 1, 2, 3, 5, 10 hearts', G.hearts.packs.map((p) => p.price).join(', ')))}${foot('hearts')}
+  <div class="card"><h2>Limits and rewards</h2><div class="grid">${[['startCoins', 'Coins for new players'], ['startHearts', 'Hearts for new players'], ['dailyBonus', 'Daily bonus'], ['inviteReward', 'Invite reward'], ['inviteMinDeposit', 'Friend must deposit (invite)'], ['depositMin', 'Min deposit'], ['depositMax', 'Max deposit'], ['withdrawMin', 'Min withdrawal'], ['maxPendingDeposits', 'Max pending deposits / player'], ['maxPendingWithdrawals', 'Max pending withdrawals / player']].map(([k, l]) => field('lim_' + k, l, L[k])).join('')}</div>
+   <div class="row" style="margin-top:10px"><button class="b g" onclick="saveLimits()">Save limits</button></div></div>
+  <div class="card"><h2>Storage rules</h2><div class="grid">${field('st_fullPct', 'Treat a database as full at % (new data goes to the next one)', ST.fullPct)}${field('st_ledgerKeepDays', 'Keep balance history (days)', ST.ledgerKeepDays)}${field('st_avatarKeepDays', 'Delete pictures unused for (days)', ST.avatarKeepDays)}</div>
+   <div class="row" style="margin-top:10px"><button class="b g" onclick="saveStorage()">Save storage rules</button></div></div>`);
+});
+const send = guard(async (patch, ok) => { const r = await call('/settings', patch); toast(ok || 'Saved'); VIEWS.games(); return r; });
+const v = (id) => $(id).value, ck = (id) => $(id).checked;
+window.saveMaint = () => send({ maintenance: { on: ck('mt_on'), msg: v('mt_msg') } });
+window.saveLimits = () => { const o = {}; ['startCoins', 'startHearts', 'dailyBonus', 'inviteReward', 'inviteMinDeposit', 'depositMin', 'depositMax', 'withdrawMin', 'maxPendingDeposits', 'maxPendingWithdrawals'].forEach((k) => { o[k] = v('lim_' + k); }); send({ limits: o }); };
+window.saveStorage = () => send({ storage: { fullPct: v('st_fullPct'), ledgerKeepDays: v('st_ledgerKeepDays'), avatarKeepDays: v('st_avatarKeepDays') } });
+window.saveGame = (g) => {
+  const o = { on: ck(g + '_on') };
+  if (g !== 'hearts') o.edge = v(g + '_edge');
+  if (g === 'duel') o.fee = v('duel_fee');
+  if (g === 'bomb') { o.maxMult = v('bomb_maxMult'); o.minBombs = v('bomb_minBombs'); o.maxBombs = v('bomb_maxBombs'); o.entries = arr('bomb_entries'); }
+  if (g === 'lucky') o.tiers = arr('lucky_tiers');
+  if (g === 'slots') { o.min = v('slots_min'); o.max = v('slots_max'); o.presets = arr('slots_presets'); }
+  if (g === 'spin') o.cost = v('spin_cost');
+  if (g === 'hearts') o.packs = arr('hearts_prices').map((price) => ({ price }));
+  send({ games: { [g]: o } }, 'Saved: ' + (GAMES[g] || 'Hearts'));
+};
+
+/* ---------------- users ---------------- */
+let uq = '', us = 'seen', up = 0, ub = false;
+VIEWS.users = guard(async () => {
+  main(`<div class="card"><input id="uq" placeholder="Telegram ID, @username or name" value="${esc(uq)}"><div class="row" style="margin-top:8px"><select id="us"><option value="seen">Last seen</option><option value="coins">Most coins</option><option value="new">Newest</option><option value="plays">Most plays</option><option value="dep">Most deposited</option></select>
+   <label class="sw" style="margin:0"><input type="checkbox" id="ub" ${ub ? 'checked' : ''}> banned only</label><button class="b" onclick="uSearch()">Search</button></div></div><div class="card" id="ul">Loading…</div>`);
+  $('us').value = us; $('uq').onkeydown = (e) => { if (e.key === 'Enter') uSearch(); };
+  const r = await call(`/users?q=${encodeURIComponent(uq)}&sort=${us}&page=${up}${ub ? '&banned=1' : ''}`);
+  $('ul').innerHTML = (r.items.map((u) => `<div class="item" style="cursor:pointer" onclick="openUser(${u.tgId})"><div><b>${esc(u.name)}</b> ${u.banned ? '<span class="tag bad">banned</span>' : ''}<br><small>${u.username ? '@' + esc(u.username) + ' · ' : ''}${u.tgId} · seen ${ago(u.lastSeenAt)}</small></div><div style="text-align:right"><b>${n(u.coins)}</b><br><small>♥ ${u.hearts} · dep ${n(u.depositTotal)}</small></div></div>`).join('') || '<span class="mut">No players found</span>')
+    + `<div class="row" style="margin-top:10px"><button class="b s" ${up ? '' : 'disabled'} onclick="up--;VIEWS.users()">‹ Prev</button><span class="mut" style="text-align:center">${r.total} players · page ${up + 1}</span><button class="b s" ${(up + 1) * r.size < r.total ? '' : 'disabled'} onclick="up++;VIEWS.users()">Next ›</button></div>`;
+});
+window.uSearch = () => { uq = v('uq').trim(); us = v('us'); ub = ck('ub'); up = 0; VIEWS.users(); };
+window.openUser = guard(async (id) => {
+  const r = await call('/users/' + id), u = r.user;
+  modal(`<div class="row"><h2 style="flex:1">${esc(u.name)}</h2><button class="b s" onclick="modal()">Close</button></div>
+   <p class="note">${u.username ? '@' + esc(u.username) + ' · ' : ''}ID ${u.tgId} · joined ${new Date(u.createdAt).toLocaleDateString()} · seen ${ago(u.lastSeenAt)} ago${u.invitedBy ? ' · invited by ' + u.invitedBy : ''}${u.premium ? ' · Premium' : ''}</p>
+   <div class="grid3"><div class="k"><b>${n(u.coins)}</b><span>Coins</span></div><div class="k"><b>${u.hearts}</b><span>Hearts</span></div><div class="k"><b>${n(u.plays)}</b><span>Plays</span></div><div class="k"><b>${n(u.depositTotal)}</b><span>Deposited</span></div><div class="k"><b>${r.invited}</b><span>Invited</span></div><div class="k"><b>${sg(r.gameNetLast60)}</b><span>Game result (last 60 rows)</span></div></div>
+   ${u.banned ? `<div class="warnbox">Banned: ${esc(u.banReason)}</div>` : ''}
+   <h3>Change balance</h3><div class="grid"><div><label>Coins (+ add / - take)</label><input id="a_c" type="number" placeholder="0"></div><div><label>Hearts</label><input id="a_h" type="number" placeholder="0"></div></div>
+   <label>Reason (saved in the history)</label><input id="a_r" placeholder="e.g. compensation"><label class="sw"><input type="checkbox" id="a_n"> tell the player in Telegram</label>
+   <div class="row" style="margin-top:8px"><button class="b g" onclick="uAdj(${id},'add')">Apply change</button><button class="b y" onclick="uAdj(${id},'set')">Set exact balance</button></div>
+   <h3>Account</h3><div class="row"><input id="a_b" placeholder="Ban reason"><button class="b ${u.banned ? 'g' : 'r'}" onclick="uBan(${id},${!u.banned})">${u.banned ? 'Unban' : 'Ban'}</button></div>
+   <div class="row" style="margin-top:8px"><input id="a_m" placeholder="Send a message to this player"><button class="b" onclick="uMsg(${id})">Send</button></div>
+   <h3>Deposits / withdrawals</h3>${r.deposits.map((d) => `<div class="item"><span>＋${n(d.amount)} <span class="tag ${d.status === 'approved' ? 'ok' : d.status === 'pending' ? 'warn' : 'bad'}">${d.status}</span></span><small>${ago(d.at)}</small></div>`).join('') + r.withdrawals.map((w) => `<div class="item"><span>－${n(w.coins)} ${esc(w.platform)} <span class="tag ${w.status === 'paid' ? 'ok' : w.status === 'pending' ? 'warn' : 'bad'}">${w.status}</span></span><small>${ago(w.at)}</small></div>`).join('') || '<span class="mut">none</span>'}
+   <h3>Balance history</h3><table><tr><th>What</th><th>Change</th><th>Balance</th><th>Age</th></tr>${r.ledger.map((x) => `<tr><td>${esc(TX[x.type] || x.type)}${x.note ? '<br><small class="mut">' + esc(x.note) + '</small>' : ''}</td><td>${sg(x.delta)}</td><td>${x.bal == null ? '-' : n(x.bal)}</td><td>${ago(x.at)}</td></tr>`).join('') || '<tr><td colspan="4">no history</td></tr>'}</table>`);
+});
+window.uAdj = guard(async (id, mode) => {
+  const body = { mode, coins: v('a_c') || 0, hearts: v('a_h') || 0, reason: v('a_r'), notify: ck('a_n') };
+  if (mode === 'set' && !confirm('Set the EXACT balance to ' + (v('a_c') || 0) + ' coins?')) return;
+  if (mode === 'set') { if (v('a_c') === '') delete body.coins; if (v('a_h') === '') delete body.hearts; }
+  await call('/users/' + id + '/adjust', body); toast('Balance updated'); openUser(id);
+});
+window.uBan = guard(async (id, on) => { await call('/users/' + id + '/ban', { banned: on, reason: v('a_b') }); toast(on ? 'Banned' : 'Unbanned'); openUser(id); });
+window.uMsg = guard(async (id) => { await call('/users/' + id + '/message', { text: v('a_m') }); toast('Sent'); });
+
+/* ---------------- deposits / withdrawals ---------------- */
+let depF = 'pending', wdF = 'pending';
+VIEWS.dep = guard(async () => {
+  main('Loading…'); const r = await call('/deposits' + (depF ? '?status=' + depF : ''));
+  main(`<div class="card"><div class="row"><select id="df" onchange="depF=this.value;VIEWS.dep()"><option value="pending">Pending</option><option value="">All</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select></div>
+   <p class="note">The payment screenshot is in the bot chat with the request message. Approving here does the same as the Telegram button.</p>
+   ${r.items.map((d) => `<div class="item"><div><b>${esc(d.name || d.tgId)}</b> <small class="mut" style="cursor:pointer" onclick="openUser(${d.tgId})">${d.tgId}</small><br><small>${d.admin === 2 ? 'WAVE' : 'KPAY'} · payer "${esc(d.username)}" · ${ago(d.at)}</small></div>
+    <div style="text-align:right"><b>${n(d.finalAmount || d.amount)}</b><br>${d.status === 'pending' ? `<input id="da_${d.id}" type="number" value="${d.amount}" style="width:90px;padding:5px"> <button class="b g" onclick="depAct('${d.id}','approve')">✔</button> <button class="b r" onclick="depAct('${d.id}','reject')">✖</button>` : `<span class="tag ${d.status === 'approved' ? 'ok' : 'bad'}">${d.status}</span>`}</div></div>`).join('') || '<span class="mut">Nothing here</span>'}</div>`);
+  $('df').value = depF;
+});
+window.depAct = guard(async (id, act) => { if (!confirm(act === 'approve' ? 'Add these coins to the player?' : 'Reject this deposit?')) return; await call(`/deposits/${id}/${act}`, act === 'approve' ? { amount: v('da_' + id) } : {}); toast('Done'); VIEWS.dep(); });
+VIEWS.wd = guard(async () => {
+  main('Loading…'); const r = await call('/withdrawals' + (wdF ? '?status=' + wdF : ''));
+  main(`<div class="card"><div class="row"><select id="wf" onchange="wdF=this.value;VIEWS.wd()"><option value="pending">Pending</option><option value="">All</option><option value="paid">Paid</option><option value="rejected">Rejected</option></select></div>
+   <p class="note">Pay the player first (KPay / Wave), then press Paid. Reject returns the coins to the player.</p>
+   ${r.items.map((w) => `<div class="item"><div><b>${esc(w.name || w.tgId)}</b> <small class="mut" style="cursor:pointer" onclick="openUser(${w.tgId})">${w.tgId}</small><br><small>${esc(w.platform)} · ${esc(w.accountName)} · <b>${esc(w.phone)}</b><br>deposited ${n(w.deposited)} · ${ago(w.at)}</small></div>
+    <div style="text-align:right"><b>${n(w.coins)}</b><br>${w.status === 'pending' ? `<button class="b g" onclick="wdAct('${w.id}','paid')">Paid</button> <button class="b r" onclick="wdAct('${w.id}','reject')">Reject</button>` : `<span class="tag ${w.status === 'paid' ? 'ok' : 'bad'}">${w.status}</span>`}</div></div>`).join('') || '<span class="mut">Nothing here</span>'}</div>`);
+  $('wf').value = wdF;
+});
+window.wdAct = guard(async (id, act) => { if (!confirm(act === 'paid' ? 'Mark as PAID? (you already sent the money)' : 'Reject and return the coins?')) return; await call(`/withdrawals/${id}/${act}`, {}); toast('Done'); VIEWS.wd(); });
+
+/* ---------------- risk ---------------- */
+let rh = 24;
+VIEWS.risk = guard(async () => {
+  main('Loading…'); const r = await call('/risk?hours=' + rh);
+  const t = (rows) => `<table><tr><th>Player</th><th>Net</th><th>Bets</th><th>Balance</th><th>Deposited</th></tr>${rows.map((x) => `<tr style="cursor:pointer" onclick="openUser(${x.tgId})"><td>${esc(x.name || x.tgId)}</td><td>${sg(x.net)}</td><td>${x.n}</td><td>${n(x.coins)}</td><td>${n(x.deposited)}</td></tr>`).join('') || '<tr><td colspan="5">none</td></tr>'}</table>`;
+  main(`<div class="card"><div class="row"><select id="rhs" onchange="rh=+this.value;VIEWS.risk()"><option value="6">Last 6 hours</option><option value="24">Last 24 hours</option><option value="168">Last 7 days</option><option value="720">Last 30 days</option></select></div>
+   <h3>Biggest winners (game results only)</h3>${t(r.winners)}<p class="note">A winner who deposited little and holds a lot of coins, or who wins far more often than the odds allow, deserves a look before you approve a withdrawal.</p><h3>Biggest losers</h3>${t(r.losers)}
+   <h3>Largest pending withdrawals</h3>${r.bigWithdrawals.map((w) => `<div class="item"><span onclick="openUser(${w.tgId})" style="cursor:pointer">${w.tgId} · ${esc(w.platform)}</span><b>${n(w.coins)}</b></div>`).join('') || '<span class="mut">none</span>'}</div>`);
+  $('rhs').value = rh;
+});
+
+/* ---------------- broadcast ---------------- */
+VIEWS.bc = guard(async () => {
+  main(`<div class="card"><h2>Message to all players</h2><textarea id="bt" maxlength="1500" placeholder="Text of the message"></textarea><label>Send to</label><select id="bo"><option value="all">Everyone</option><option value="active7">Players active in the last 7 days</option></select>
+   <div class="row" style="margin-top:10px"><button class="b" onclick="bcSend()">Send</button></div><div id="bs" class="note"></div></div>`); bcPoll();
+});
+window.bcSend = guard(async () => { if (!v('bt').trim() || !confirm('Send this message to the players now?')) return; await call('/broadcast', { text: v('bt'), only: v('bo') }); toast('Sending…'); bcPoll(); });
+async function bcPoll() { if (tab !== 'bc') return; try { const j = await call('/broadcast'); if ($('bs')) $('bs').textContent = j.total ? `${j.done ? 'Finished' : 'Sending'}: ${j.sent} sent, ${j.failed} failed of ${j.total}` : ''; if (!j.done) setTimeout(bcPoll, 2000); } catch (e) {} }
+
+/* ---------------- databases ---------------- */
+VIEWS.db = guard(async () => {
+  main('Loading…'); const r = await call('/db'), roles = r.roles.map((x) => x.role);
+  const cnt = (o) => roles.map((k) => `${k}: <b>${n(o[k])}</b>`).join(' · ');
+  const opt = roles.map((k) => `<option>${k}</option>`).join('');
+  main(`<div class="card"><h2>Storage</h2>${dbBars(r.stats)}<p class="note">main = players, games, deposits. img = profile pictures and screenshots. hist = balance history. When a database reaches ${r.keep.fullPct}% new pictures / history go to the next database automatically, and lookups search all of them. A role without its own MONGODB_*_URI uses the main database.</p></div>
+  <div class="card"><h2>Rows per database</h2><p>Profile pictures: ${cnt(r.avatars)}</p><p>Balance history: ${cnt(r.ledger)}</p><p>Screenshots: ${cnt(r.shots)}</p></div>
+  <div class="card"><h2>Clean up</h2><div class="row"><input id="dd1" type="number" value="${r.keep.ledgerKeepDays}"><button class="b y" onclick="dbAct({action:'prune_ledger',days:+v('dd1')})">Delete balance history older than N days</button></div>
+   <div class="row" style="margin-top:8px"><input id="dd2" type="number" value="${r.keep.avatarKeepDays}"><button class="b y" onclick="dbAct({action:'prune_avatars',days:+v('dd2')})">Delete pictures unused for N days</button></div></div>
+  <div class="card"><h2>Move data between databases</h2><div class="grid3"><div><label>What</label><select id="mw"><option value="ledger">Balance history</option><option value="avatar">Profile pictures</option><option value="shot">Screenshots</option></select></div><div><label>From</label><select id="mf">${opt}</select></div><div><label>To</label><select id="mt">${opt}</select></div></div>
+   <div class="grid"><div><label>Only history older than (days, 0 = all)</label><input id="mo" type="number" value="0"></div><div><label>Max rows</label><input id="ml" type="number" value="2000"></div></div>
+   <div class="row" style="margin-top:10px"><button class="b" onclick="dbMove()">Move</button></div></div>`);
+  if (roles.length > 1) { $('mt').selectedIndex = 1; }
+});
+window.dbAct = guard(async (b) => { if (!confirm('Do this now? It cannot be undone.')) return; const r = await call('/db/action', b); toast('Done: ' + (r.deleted != null ? r.deleted + ' deleted' : r.moved + ' moved')); VIEWS.db(); });
+window.dbMove = () => { if (v('mf') === v('mt')) return toast('Choose two different databases', true); dbAct({ action: 'move', what: v('mw'), from: v('mf'), to: v('mt'), olderDays: +v('mo'), limit: +v('ml') }); };
+
+VIEWS.audit = guard(async () => { main('Loading…'); const r = await call('/audit'); main(`<div class="card"><h2>Admin actions</h2>${r.items.map((x) => `<div class="item"><div><b>${esc(x.action)}</b> <small class="mut">${esc(x.name)}</small><br><small>${esc(x.detail)}</small></div><small>${ago(x.at)}</small></div>`).join('') || '<span class="mut">none</span>'}</div>`); });
+go('dash');
+</script></body></html>

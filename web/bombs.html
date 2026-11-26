@@ -221,10 +221,10 @@ function buildEntries() {
     </button>`).join('');
   $('entries').onclick = e => { const b = e.target.closest('.entry'); if (!b) return; entry = +b.dataset.v; haptic('light'); paintLobby(); };
 }
-function buildMults() {
-  const row = (items, top) => `<div class="a" style="left:0;right:0;top:${top}px;display:flex;justify-content:center;gap:8px">${items}</div>`;
-  const chip = (m, i) => `<div class="mc" data-i="${i}"><span>${m}x</span></div>`;
-  const L = BOMB_LADDER;
+function buildMults() {   // the multipliers of the CHOSEN bomb count (more bombs = bigger steps, fewer steps)
+  const row = (items, top) => items ? `<div class="a" style="left:0;right:0;top:${top}px;display:flex;justify-content:center;gap:8px">${items}</div>` : '';
+  const chip = (m, i) => `<div class="mc" data-i="${i}"><span>${+m.toFixed(2)}x</span></div>`;
+  const L = bombRow(bombs);
   $('mults').innerHTML = row(L.slice(0, 6).map((m, i) => chip(m, i)).join(''), 940) + row(L.slice(6).map((m, i) => chip(m, i + 6)).join(''), 1000);
 }
 const KNOB = 56, TRK = 602;
@@ -235,17 +235,17 @@ function paintLobby() {
   });
   $('feeTxt').textContent = 'ENTRY FEE: ' + num(entry) + ' COINS';
   $('bCount').textContent = bombs;
-  $('knob').style.left = ((bombs - 3) / 12 * (TRK - KNOB)) + 'px';
-  document.querySelectorAll('.mc').forEach(c => c.classList.toggle('start', +c.dataset.i === bombs - 3));
+  $('knob').style.left = ((bombs - BOMB_MIN) / Math.max(1, BOMB_MAX - BOMB_MIN) * (TRK - KNOB)) + 'px';
+  buildMults(); document.querySelectorAll('.mc').forEach(c => c.classList.toggle('start', +c.dataset.i === 0));
   $('play').style.opacity = coins < entry ? .6 : 1;
   setCoins();
 }
-function setBombs(v) { v = Math.max(3, Math.min(15, Math.round(v))); if (v !== bombs) { bombs = v; haptic('light'); } paintLobby(); }
+function setBombs(v) { v = Math.max(BOMB_MIN, Math.min(BOMB_MAX, Math.round(v))); if (v !== bombs) { bombs = v; haptic('light'); } paintLobby(); }
 $('minus').onclick = () => setBombs(bombs - 1);
 $('plus').onclick = () => setBombs(bombs + 1);
 (function slider() {
   const w = $('slWrap'); let drag = false;
-  const move = e => { const r = w.getBoundingClientRect(); const x = (e.clientX - r.left) / SC; setBombs(3 + (x - KNOB / 2) / (TRK - KNOB) * 12); };
+  const move = e => { const r = w.getBoundingClientRect(); const x = (e.clientX - r.left) / SC; setBombs(BOMB_MIN + (x - KNOB / 2) / (TRK - KNOB) * (BOMB_MAX - BOMB_MIN)); };
   w.addEventListener('pointerdown', e => { drag = true; try { w.setPointerCapture(e.pointerId); } catch (_) {} move(e); });
   w.addEventListener('pointermove', e => { if (drag) move(e); });
   const up = () => { drag = false; }; w.addEventListener('pointerup', up); w.addEventListener('pointercancel', up);
@@ -394,7 +394,9 @@ $('hClose').onclick = () => show('histL', false);
 async function refresh(resume) {   // resume=true: if an unfinished round exists, jump back into it
   try {
     const s = await api.bombState(); coins = s.coins;
-    if (Array.isArray(s.ladder) && s.ladder.length === BOMB_LADDER.length && s.ladder.some((v, i) => v !== BOMB_LADDER[i])) { BOMB_LADDER.splice(0, BOMB_LADDER.length, ...s.ladder); buildMults(); }
+    if (s.table) BOMB_TABLE = s.table;
+    if (s.minBombs) { BOMB_MIN = s.minBombs; BOMB_MAX = s.maxBombs; bombs = Math.max(BOMB_MIN, Math.min(BOMB_MAX, bombs)); }
+    if (Array.isArray(s.entries) && s.entries.length === BOMB_ENTRIES.length && s.entries.some((v, i) => v !== BOMB_ENTRIES[i])) { BOMB_ENTRIES.splice(0, BOMB_ENTRIES.length, ...s.entries); if (!BOMB_ENTRIES.includes(entry)) entry = BOMB_ENTRIES[1]; buildEntries(); }
     paintLobby();
     if (resume && s.round) enterGame(s.round);
   } catch (e) { toast(errMsg(e)); }
