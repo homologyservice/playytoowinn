@@ -302,7 +302,7 @@ async function spinOnce() {   // returns the server result, or null if it failed
     $('winline').classList.add('on');
     $('fx').classList.remove('on'); void $('fx').offsetWidth; $('fx').classList.add('on');
     haptic('success'); winFx(res);
-    $('msg').innerHTML = `<span class="gold">${SYM_NAME[res.sym]} ×${res.mult}</span> · WIN <span class="gold">+${num(res.win)}</span>`;
+    $('msg').innerHTML = `<span class="gold">${SYM_NAME[res.sym]} ×${+Number(res.mult).toFixed(1)}</span> · WIN <span class="gold">+${num(res.win)}</span>`;
   } else {
     haptic('error');
     $('msg').innerHTML = `No win this time. <span style="opacity:.8">Try again!</span>`;
@@ -390,7 +390,7 @@ function buildPaytable() {
     <div class="a" style="left:0;right:0;top:${i * 58}px;height:52px;display:flex;align-items:center;gap:14px">
       <img src="${SYM_IMG[k]}" style="width:48px;height:48px" alt="">
       <div style="flex:1;font-size:22px;font-weight:700">${SYM_NAME[k]} <span style="opacity:.8;font-size:17px">×3</span></div>
-      <div class="gold" style="font-size:26px;font-weight:700">×${paytable ? paytable[k] : ''}</div>
+      <div class="gold" style="font-size:26px;font-weight:700">×${paytable ? +Number(paytable[k]).toFixed(1) : ''}</div>
     </div>`).join('');
 }
 $('paytableBtn').onclick = () => { show('modal', true); $('autoPanel').style.display = 'none'; $('helpPanel').style.display = 'block'; };
@@ -409,6 +409,8 @@ async function boot() {
   try {
     const s = await api.slotState();
     coins = s.coins; paytable = s.paytable; setCoins(); buildPaytable();
+    if (s.min) { SLOT_BET_MIN = s.min; SLOT_BET_MAX = s.max; }
+    if (Array.isArray(s.presets) && s.presets.length === SLOT_BET_PRESETS.length) { SLOT_BET_PRESETS.splice(0, SLOT_BET_PRESETS.length, ...s.presets); buildPresets(); }
     if (!SLOT_BET_PRESETS.includes(bet)) bet = SLOT_BET_PRESETS[1];
     setBet(bet);
   } catch (e) { toast(errMsg(e)); }

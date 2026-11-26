@@ -41,7 +41,7 @@
  <div class="chip-coins"><img src="assets/04_gold_coins.webp" alt=""><span id="coins">0</span></div>
 
  <div id="card" class="panel">
-  <div id="av" class="a"><img class="ph" id="ph" src="assets/03_default_avatar.webp" alt=""><img src="assets/02_avatar_frame.webp" alt=""></div>
+  <div id="av" class="a"><img data-me-av class="ph" id="ph" src="assets/03_default_avatar.webp" alt=""><img src="assets/02_avatar_frame.webp" alt=""></div>
   <div id="pname" class="a t">Player</div>
   <div id="pid" class="a t"><span>ID <span id="pidv">-</span></span><span class="pill grey press" id="copyId">COPY</span></div>
   <div id="pcoins" class="a t"><img src="assets/04_gold_coins.webp" alt=""><span id="pc">0</span></div>
@@ -70,8 +70,6 @@ const vibOn = () => localStorage.getItem('p2w_vib') !== '0';
 const paintVib = () => $('tgVib').classList.toggle('on', vibOn());
 $('mVib').onclick = () => { localStorage.setItem('p2w_vib', vibOn() ? '0' : '1'); paintVib(); haptic('medium'); };
 paintVib();
-const u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
-if (u && u.photo_url) { $('ph').src = u.photo_url; $('ph').onerror = () => { $('ph').src = 'assets/03_default_avatar.webp'; }; }
 $('copyId').onclick = async () => { try { await navigator.clipboard.writeText($('pidv').textContent); toast('ID copied'); } catch (e) { toast('Could not copy'); } };
 (async () => {
   try {

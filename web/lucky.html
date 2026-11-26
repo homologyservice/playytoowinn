@@ -94,7 +94,7 @@ button:active:not(:disabled) .btn{transform:translateY(3px)}
    <div class="btn green"></div>
    <div class="a fit t" id="playTxt" style="inset:0 0 7px 0;font-size:34px;font-weight:700;gap:12px"><svg width="26" height="28" viewBox="0 0 24 26"><path d="M3 2l19 11L3 24z" fill="#fff"/></svg>PLAY</div>
   </button>
-  <div class="a c" style="left:30px;right:30px;top:1310px;font-size:18px;line-height:1.3;opacity:.9">Card returns are set when you press PLAY.<br>Expected return is 90% of the bet.</div>
+  <div class="a c" style="left:30px;right:30px;top:1310px;font-size:18px;line-height:1.3;opacity:.9">Card returns are set when you press PLAY.<br><span id="rtpTxt">Expected return is 90% of the bet.</span></div>
  </div>
 
  <!-- ================= GAME ================= -->
@@ -379,6 +379,9 @@ $('hClose').onclick = () => show('histL', false);
 async function refresh(resume) {   // resume=true: if a round is still open, jump back into it
   try {
     const s = await api.luckyState(); coins = s.coins;
+    if (Array.isArray(s.tiers) && s.tiers.length === LUCKY_TIERS.length) { LUCKY_TIERS.splice(0, LUCKY_TIERS.length, ...s.tiers); if (!LUCKY_TIERS.includes(bet)) bet = LUCKY_TIERS[0]; buildTiers(); }
+    if (s.cards) { Object.assign(LUCKY_CARDS, s.cards); buildGame(); }
+    if (s.rtp) $('rtpTxt').textContent = tr('Expected return is ' + Math.round(s.rtp * 100) + '% of the bet.');
     paintLobby();
     if (resume && s.round) { enterGame(s.round); toast('You have an open round. Pick a card to finish it.'); }
   } catch (e) { toast(errMsg(e)); }
