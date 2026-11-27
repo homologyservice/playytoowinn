@@ -81,6 +81,7 @@
 #cfm .bs{display:flex;gap:12px;margin-top:12px}#cfm .bs button{flex:1;height:50px;border-radius:25px;font-size:19px;font-weight:700;color:#fff;border:3px solid rgba(255,255,255,.75)}
 #cfNo{background:linear-gradient(#8bb8ff,#3f79e6);box-shadow:0 5px 0 #1c3a8c}#cfYes{background:linear-gradient(#ffe98c,#f6b92f);box-shadow:0 5px 0 #9a5a0a;text-shadow:0 2px 0 #9a5a0a}
 </style>
+<style>@view-transition{navigation:auto}::view-transition-old(root),::view-transition-new(root){animation-duration:.14s}html{background:#4a46b8}</style>
 </head>
 <body>
 <div id="wrap">
@@ -200,11 +201,16 @@ async function loadMine() {
     $('reqs').innerHTML = d.items.map(x => { const s = ST[x.status] || ST.pending; return `<div class="r"><b>${nf(x.coins)}</b><span class="d">${escHtml(x.platform)} · ${new Date(x.at).toLocaleDateString()}</span><span class="${s[0]}">${s[1]}</span></div>`; }).join('');
   } catch (e) {}
 }
+const DEF_CFG = { platforms: [{ key: 1, label: 'KPAY', available: true }, { key: 2, label: 'WAVE PAY', available: true }], min: 5000 };
+function applyCfg(c) { CFG = c; balance = typeof Cache.get().coins === 'number' ? Cache.get().coins : c.coins || 0; $('coins').textContent = fmt(balance); $('balV').textContent = nf(balance); $('amtHint').textContent = `Minimum ${nf(CFG.min)} coins`; }
+applyCfg(Cache.json('wcfg') || DEF_CFG); buildCards();
 (async () => {
   try {
-    CFG = await api.withdrawConfig(); balance = CFG.coins; $('coins').textContent = fmt(balance); $('balV').textContent = nf(balance);
-    $('amtHint').textContent = `Minimum ${nf(CFG.min)} coins`;
-    buildCards(); loadMine();
+    const c = await api.withdrawConfig(); Cache.put('wcfg', c);
+    const changed = JSON.stringify(c.platforms) !== JSON.stringify(CFG.platforms);
+    CFG = c; balance = c.coins; $('coins').textContent = fmt(balance); $('balV').textContent = nf(balance); $('amtHint').textContent = `Minimum ${nf(CFG.min)} coins`;
+    if (changed && !plat) buildCards(); else if (plat) plat = CFG.platforms.find(a => a.key === plat.key) || plat;
+    check(); loadMine();
   } catch (e) { toast('Could not load, please try again'); }
 })();
 </script>
