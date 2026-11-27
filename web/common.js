@@ -40,6 +40,15 @@ function fitStage(el) {
 const API_URL = (window.P2W_API || '').replace(/\/$/, '');
 const LIVE = !!(API_URL && !API_URL.includes('YOUR-SERVER'));
 
+/* The last known balance / name is kept on the phone, so every page opens with real numbers instead of 0 and the server answer only corrects them. */
+const Cache = (() => {
+  const uid = tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.id, K = 'p2w_state_' + uid;
+  let c = {}; try { c = JSON.parse(localStorage.getItem(K)) || {}; } catch (e) {}
+  return { get: () => c,
+    save(j) { c = { ...c, coins: j.coins, ...(typeof j.hearts === 'number' ? { hearts: j.hearts } : {}), ...(j.name ? { name: j.name } : {}) }; try { localStorage.setItem(K, JSON.stringify(c)); } catch (e) {} },
+    json(key) { try { return JSON.parse(localStorage.getItem(K + '_' + key)); } catch (e) { return null; } },
+    put(key, v) { try { localStorage.setItem(K + '_' + key, JSON.stringify(v)); } catch (e) {} } };
+})();
 function blockScreen(msg) {
   let d = $('p2wBlock');
   if (!d) { d = document.createElement('div'); d.id = 'p2wBlock'; d.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;padding:28px;text-align:center;white-space:pre-line;font:600 20px/1.5 sans-serif;color:#fff;background:#2b2780'; document.body.appendChild(d); }
@@ -61,6 +70,7 @@ async function call(path, body, timeoutMs) {
       else if (j.error === 'game_off') toast('This game is paused right now');
       const err = new Error(j.error || 'network_error'); err.data = j; throw err;
     }
+    if (j && typeof j.coins === 'number') Cache.save(j);
     return j;
   } catch (e) {
     if (e && e.name === 'AbortError') throw new Error('timeout');
@@ -354,3 +364,20 @@ if (LANG === 'my') {
   })).observe(document.body, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['placeholder'] }); };
   if (document.body) run(); else addEventListener('DOMContentLoaded', run);
 }
+
+/* ---- smoothness helpers ---- */
+(function () {
+  const c = Cache.get();
+  if (typeof c.coins === 'number') ['lcoins'].concat([]).forEach(id => { const e = $(id); if (e && /^0?$/.test(e.textContent.trim())) e.textContent = fmt(c.coins); });
+  document.querySelectorAll('.chip-coins #coins').forEach(e => { if (typeof c.coins === 'number') e.textContent = fmt(c.coins); });
+  const bal = $('balV'); if (bal && typeof c.coins === 'number') bal.textContent = Number(c.coins).toLocaleString('en-US');
+  /* keep the (free) server awake while the app is open, so the first tap never waits for a cold start */
+  const ping = () => fetch(API_URL + '/health', { cache: 'no-store' }).catch(() => {});
+  ping(); setInterval(ping, 4 * 60 * 1000);
+  /* download the other main pages in the background so moving between them is instant */
+  const idle = window.requestIdleCallback || (f => setTimeout(f, 1200));
+  idle(() => ['index.html', 'withdraw.html', 'invites.html', 'profile.html', 'deposit.html'].forEach(p => {
+    if (location.pathname.endsWith(p) || (p === 'index.html' && (location.pathname === '/' || location.pathname.endsWith('/index')))) return;
+    const l = document.createElement('link'); l.rel = 'prefetch'; l.href = p; document.head.appendChild(l);
+  }));
+})();

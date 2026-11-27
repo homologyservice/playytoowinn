@@ -71,6 +71,7 @@
 #doneBtn{margin-top:10px;width:70%;height:50px;border-radius:25px;font-size:20px;font-weight:700;color:#fff;border:3px solid rgba(255,255,255,.75);background:linear-gradient(#72f2a6,#1fb878 55%,#0e9560);box-shadow:0 5px 0 #0a6b43}
 #doneScrim{position:fixed;inset:0;background:rgba(14,10,60,.7);z-index:79;display:none}#doneScrim.on{display:block}
 </style>
+<style>@view-transition{navigation:auto}::view-transition-old(root),::view-transition-new(root){animation-duration:.14s}html{background:#4a46b8}</style>
 </head>
 <body>
 <div id="wrap">
@@ -221,12 +222,19 @@ async function loadMine() {
     $('reqs').innerHTML = d.items.map(x => { const s = ST[x.status] || ST.pending; return `<div class="r"><b>+${nf(x.amount)}</b><span class="d">Admin ${x.admin} · ${new Date(x.at).toLocaleDateString()}</span><span class="${s[0]}">${s[1]}</span></div>`; }).join('');
   } catch (e) {}
 }
+function applyCfg(c) {
+  CFG = c; $('amtHint').textContent = `Min ${nf(CFG.min)} · Max ${nf(CFG.max)} coins`;
+  $('shotRule').textContent = `JPG / PNG / WebP · Min ${mbTxt(CFG.shotMinMb)} · Max ${mbTxt(CFG.shotMaxMb)}`;
+}
+const cachedCfg = Cache.json('dcfg');
+if (cachedCfg) { applyCfg(cachedCfg); buildCards(); if (typeof Cache.get().coins === 'number') $('coins').textContent = fmt(Cache.get().coins); }   // second visit onwards: cards appear at once
 (async () => {
   try {
-    CFG = await api.depositConfig();
-    $('amtHint').textContent = `Min ${nf(CFG.min)} · Max ${nf(CFG.max)} coins`;
-    $('shotRule').textContent = `JPG / PNG / WebP · Min ${mbTxt(CFG.shotMinMb)} · Max ${mbTxt(CFG.shotMaxMb)}`;
-    buildCards(); loadMine();
+    const c = await api.depositConfig(); Cache.put('dcfg', c);
+    const changed = !cachedCfg || JSON.stringify(c.admins) !== JSON.stringify(cachedCfg.admins);
+    applyCfg(c);
+    if (changed && !admin) buildCards();
+    loadMine();
     const p = await api.profile().catch(() => null); if (p) $('coins').textContent = fmt(p.coins);
   } catch (e) { toast('Could not load, please try again'); }
 })();
