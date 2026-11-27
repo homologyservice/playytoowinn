@@ -168,7 +168,7 @@ bot.start(async (ctx) => {
 bot.command('adminlogin', async (ctx) => {
   if (!ctx.from || !isAdmin(ctx.from.id)) return;
   console.log('adminlogin', ctx.from.id);
-  return ctx.reply('🔐 Admin panel', Markup.inlineKeyboard([Markup.button.webApp('Open admin panel', WEBAPP_URL.replace(/\/$/, '') + '/admin')]));
+  return ctx.reply('🔐 Admin panel', Markup.inlineKeyboard([Markup.button.webApp('Open admin panel', WEBAPP_URL.replace(/\/$/, '') + '/admin.html')]));
 });
 // Counts the games a player started (profile). Invites are completed by top-ups instead, see depositMilestone().
 const qualify = (uid) => { User.updateOne({ tgId: uid }, { $inc: { plays: 1 } }).catch((e) => console.error('qualify failed', e)); };
@@ -380,6 +380,7 @@ async function sendShotToAdmin(adminId, depId, buf, kind, caption, markup) {
   console.log('deposit: delivered to admin (uploaded)');
   return sent;
 }
+app.get('/health', (req, res) => res.set('Cache-Control', 'no-store').json({ ok: true }));   // the pages ping this so the free server does not fall asleep
 app.get('/api/deposit/config', auth, (req, res) => {
   res.json({ admins: [1, 2].map((n) => ({ key: String(n), name: ADMINS[n].name, username: ADMINS[n].username, available: !!ADMINS[n].id, pay: ADMINS[n].pay })),
     min: CFG().limits.depositMin, max: CFG().limits.depositMax, shotMinMb: SHOT_MIN_KB / 1024, shotMaxMb: SHOT_MAX_MB });
